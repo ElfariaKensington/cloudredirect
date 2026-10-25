@@ -105,7 +105,7 @@ bool ReplaceSlots(void** table,const std::vector<std::pair<size_t,void*>>& slots
     if(object)mach_port_deallocate(mach_task_self(),object);
     if(region>page||region+size<end)return false;
     if(mach_vm_protect(mach_task_self(),page,end-page,false,VM_PROT_READ|VM_PROT_WRITE|VM_PROT_COPY)!=KERN_SUCCESS)return false;
-    for(auto [slot,fn]:slots)std::atomic_ref<void*>(table[slot]).store(fn,std::memory_order_release);
+    for(auto [slot,fn]:slots)__atomic_store_n(&table[slot],fn,__ATOMIC_RELEASE);
     return mach_vm_protect(mach_task_self(),page,end-page,false,info.protection)==KERN_SUCCESS;
 }
 }
