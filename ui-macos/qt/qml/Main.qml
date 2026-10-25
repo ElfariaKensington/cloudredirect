@@ -118,7 +118,7 @@ ApplicationWindow {
                                     Layout.preferredWidth: 20
                                     Layout.preferredHeight: 20
                                     Layout.alignment: Qt.AlignVCenter
-                                    Image { anchors.centerIn: parent; width: 18; height: 18; source: "image://symbols/"+modelData.symbol+"/"+(row.highlighted ? "20251d" : palette.highlight.toString().substring(1)); sourceSize: Qt.size(36,36) }
+                                    Image { anchors.centerIn: parent; width: 18; height: 18; source: "image://symbols/"+modelData.symbol+"/"+(row.highlighted ? "20251d" : "899783"); sourceSize: Qt.size(36,36) }
                                 }
                                 Label { text: modelData.name; font.weight: row.highlighted ? Font.DemiBold : Font.Normal; Layout.fillWidth: true; Layout.fillHeight: true; verticalAlignment: Text.AlignVCenter }
                             }
