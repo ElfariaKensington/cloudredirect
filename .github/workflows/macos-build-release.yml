@@ -27,6 +27,11 @@ jobs:
           ref: macos
           submodules: recursive
 
+      - name: Verify Swift toolchain
+        run: |
+          swift --version
+          swift package --package-path ui-macos dump-package >/dev/null
+
       - name: Build app and ZIP
         run: ./scripts/macos/build.sh
 
