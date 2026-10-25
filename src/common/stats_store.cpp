@@ -5,6 +5,9 @@
 #include "file_util.h"
 #include "metadata_sync.h"
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #include <fstream>
 #include <sstream>
 #include <filesystem>

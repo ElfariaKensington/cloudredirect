@@ -651,7 +651,7 @@ void Init(ICloudProvider* provider) {
 void Init(ICloudProvider* provider, Reporter reporter) {
     // Reuse existing workers if still running.
     if (g_workerRunning.load()) {
-        g_workerRunning = false;
+        { std::lock_guard<std::mutex> lock(g_queueMutex); g_workerRunning = false; }
         g_queueCV.notify_all();
         for (auto& t : g_workerThreads) {
             if (t.joinable()) t.join();
@@ -703,7 +703,8 @@ void SetWorkerThreadCount(int count) {
 
 void Shutdown() {
     g_shuttingDown.store(true, std::memory_order_seq_cst);
-    g_workerRunning = false;
+    // Change the wait predicate under its mutex to prevent a lost shutdown wakeup.
+    { std::lock_guard<std::mutex> lock(g_queueMutex); g_workerRunning = false; }
     g_queueCV.notify_all();
 
     // 5s bounded wait for workers; detach stragglers blocked on cloud I/O.

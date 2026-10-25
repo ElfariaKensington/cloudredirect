@@ -21,3 +21,11 @@ tools/
 flatpak/release.sh
 ui/native/
 release-*/
+
+ui-macos/.build/
+ui-macos/*.app/
+out/
+.DS_Store
+
+!tests/macos_core_tests.cpp
+!tests/macos_native_rpc_tests.cpp

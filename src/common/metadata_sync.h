@@ -21,7 +21,7 @@ inline bool IsEnabled() {
 
 // SteamTools-client gate. Win: needs DLL entry. Linux: always open.
 inline bool StGateOpen() {
-#if defined(__linux__)
+#if defined(__linux__) || defined(__APPLE__)
     return true;
 #else
     return steamToolsPresent.load(std::memory_order_relaxed);

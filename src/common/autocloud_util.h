@@ -247,6 +247,8 @@ inline bool AutoCloudRuleMatchesPlatform(uint32_t mask, AutoCloudEffectivePlatfo
     if (platform == AutoCloudEffectivePlatform::Linux) return (mask & 8u) != 0;
 #ifdef _WIN32
     return (mask & 1u) != 0;  // Windows = bit 0
+#elif defined(__APPLE__)
+    return (mask & 2u) != 0;
 #else
     return (mask & 8u) != 0;  // Linux = bit 3
 #endif
@@ -383,6 +385,9 @@ inline bool IsRootOverrideActiveForPlatform(const AutoCloudRootOverrideNative& o
     if (platform == AutoCloudEffectivePlatform::Linux) return IsLinuxOS(overrideRule.os);
 #ifdef _WIN32
     return IsWindowsRootOverrideActive(overrideRule);
+#elif defined(__APPLE__)
+    auto os=ToLowerAscii(overrideRule.os);
+    return os=="macos" || os=="osx" || os=="mac";
 #else
     return IsLinuxRootOverrideActive(overrideRule);
 #endif

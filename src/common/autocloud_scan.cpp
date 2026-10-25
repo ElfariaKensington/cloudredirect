@@ -310,14 +310,14 @@ static AutoCloudEffectivePlatform DetectEffectivePlatform(const std::string& ste
             return true;
         });
 
-        if (dest == "linux" && src == "windows") {
+        if ((dest == "linux" || dest == "macos" || dest == "osx") && src == "windows") {
             LOG("DetectEffectivePlatform: app %u has platform override (dest=%s, src=%s) = Proton",
                 appId, dest.c_str(), src.c_str());
             return AutoCloudEffectivePlatform::Windows;
         }
 
-        // App not listed in compat.vdf = native Linux.
-        LOG("DetectEffectivePlatform: app %u not in compat.vdf platform_overrides = native Linux",
+        // App not listed in compat.vdf = native platform.
+        LOG("DetectEffectivePlatform: app %u not in compat.vdf platform_overrides = native platform",
             appId);
         return AutoCloudEffectivePlatform::Current;
     }
@@ -330,10 +330,10 @@ static AutoCloudEffectivePlatform DetectEffectivePlatform(const std::string& ste
         return AutoCloudEffectivePlatform::Windows;
     }
 
-    // No compat.vdf and no pfx = native Linux.
-    LOG("DetectEffectivePlatform: app %u no compat.vdf or pfx, defaulting to native Linux",
+    // No compat.vdf and no pfx = native platform.
+    LOG("DetectEffectivePlatform: app %u no compat.vdf or pfx, defaulting to native platform",
         appId);
-    return AutoCloudEffectivePlatform::Linux;
+    return AutoCloudEffectivePlatform::Current;
 #endif
 }
 
@@ -559,12 +559,22 @@ static std::vector<AutoCloudRuleNative> LoadAutoCloudRules(const std::string& st
                 }
                 if (hasProtonOverride) {
                     // Apply; has Proton-specific paths
-                    ApplyRootOverridesForPlatform(rule, overrides, AutoCloudEffectivePlatform::Linux);
+                    ApplyRootOverridesForPlatform(rule, overrides,
+#ifdef __APPLE__
+                        AutoCloudEffectivePlatform::Current);
+#else
+                        AutoCloudEffectivePlatform::Linux);
+#endif
                 }
                 // Skip; GetFileList maps Windows roots to Proton prefix
             } else {
                 // Native Linux: apply Linux rootoverrides
-                ApplyRootOverridesForPlatform(rule, overrides, AutoCloudEffectivePlatform::Linux);
+                ApplyRootOverridesForPlatform(rule, overrides,
+#ifdef __APPLE__
+                        AutoCloudEffectivePlatform::Current);
+#else
+                        AutoCloudEffectivePlatform::Linux);
+#endif
             }
 #endif
             rules.push_back(std::move(rule));
@@ -856,6 +866,12 @@ ScanResult GetFileList(const std::string& steamPath,
 #endif
     RootMapping mappings[] = {
         {"",                   "",                      0,                 FileUtil::PathToUtf8(appUserdataDir / "remote")},
+#ifdef __APPLE__
+        {"MacHome", "%MacHome%", 7, home + "/"},
+        {"MacAppSupport", "%MacAppSupport%", 8, home + "/Library/Application Support/"},
+        {"MacDocuments", "%MacDocuments%", 9, home + "/Documents/"},
+        {"MacCaches", "%MacCaches%", 14, home + "/Library/Caches/"},
+#endif
         {rGameInstall.bareName, rGameInstall.token,     rGameInstall.rootId, gameInstallPath},
         {rLocalLow.bareName,    rLocalLow.token,        rLocalLow.rootId,    localLow},
         {rLocal.bareName,       rLocal.token,           rLocal.rootId,       localAppData},
@@ -1336,7 +1352,7 @@ std::unordered_map<std::string, std::string> GetRootTokenDirectories(
         std::string xdg = getEnvStr("XDG_CONFIG_HOME");
         linuxXdgConfigHome = xdg.empty() ? (home + "/.config/") : (xdg + "/");
     }
-    // Proton: suppress native Linux roots; token directories must not be advertised
+    // Proton: suppress native platform roots; token directories must not be advertised
     // for Windows-effective apps since Steam only uses compatdata/pfx mappings.
     if (effectivePlatform == AutoCloudEffectivePlatform::Windows) {
         linuxHome.clear();
@@ -1385,6 +1401,12 @@ std::unordered_map<std::string, std::string> GetRootTokenDirectories(
 
 #ifndef _WIN32
     if (!linuxHome.empty())
+#ifdef __APPLE__
+        result["%MacHome%"] = home + "/";
+        result["%MacAppSupport%"] = home + "/Library/Application Support/";
+        result["%MacDocuments%"] = home + "/Documents/";
+        result["%MacCaches%"] = home + "/Library/Caches/";
+#endif
         result["%LinuxHome%"] = linuxHome;
     if (!linuxXdgDataHome.empty())
         result["%LinuxXdgDataHome%"] = linuxXdgDataHome;

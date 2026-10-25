@@ -54,6 +54,12 @@ inline constexpr Entry kEntries[] = {
 //   17=LinuxXdgConfigHome, 18=AndroidSteamPackageRoot,
 //   19=WindowsHome, 20=AndroidExternalData, 21=AndroidInternalData.
 inline constexpr Entry kEntries[] = {
+#ifdef __APPLE__
+    {"MacHome",               "%MacHome%",               7},
+    {"MacAppSupport",         "%MacAppSupport%",         8},
+    {"MacDocuments",          "%MacDocuments%",          9},
+    {"MacCaches",             "%MacCaches%",             14},
+#endif
     {"GameInstall",           "%GameInstall%",           2},
     {"WinMyDocuments",        "%WinMyDocuments%",        3},
     {"WinAppDataLocal",       "%WinAppDataLocal%",       4},

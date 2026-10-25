@@ -98,6 +98,11 @@ set(PROVIDER_SOURCES
     src/providers/r2_provider.cpp
 )
 
+if(APPLE)
+    include(cmake/macos.cmake)
+    return()
+endif()
+
 if(WIN32)
     set(PLATFORM_SOURCES
         src/platform/win/dllmain.cpp
