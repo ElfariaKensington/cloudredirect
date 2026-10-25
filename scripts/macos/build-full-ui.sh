@@ -18,9 +18,16 @@ EXTRA=()
 while IFS= read -r -d '' plugin; do EXTRA+=("-executable=$plugin"); done < <(find "$APP/Contents/Resources/qml" -name '*.dylib' -type f -print0)
 "$QT_PREFIX/bin/macdeployqt" "$APP" "${EXTRA[@]}" -always-overwrite -libpath="$QT_PREFIX/lib" -codesign=-
 
+# --deep does not traverse executable code stored under Resources/qml.
+# macdeployqt rewrites these plugins' load commands, so sign each explicitly.
+while IFS= read -r -d '' plugin; do
+    codesign --force --sign - "$plugin"
+    codesign --verify --strict "$plugin"
+done < <(find "$APP/Contents/Resources/qml" -name '*.dylib' -type f -print0)
 codesign --force --sign - "$APP/Contents/Resources/CloudRedirectNative"
 codesign --force --sign - "$APP/Contents/Resources/runtime/cloud_redirect.dylib"
 codesign --force --sign - "$APP/Contents/Resources/runtime/cloud_redirect_cli"
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict "$APP"
+python3 "$ROOT/scripts/macos/validate-bundle.py" "$APP"
 ditto -c -k --keepParent "$APP" "$(cd "$DEST" && pwd)/CloudRedirect-macOS-arm64.zip"
