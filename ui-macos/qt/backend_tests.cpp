@@ -18,7 +18,7 @@ int main(int argc,char**argv){QCoreApplication app(argc,argv);QTemporaryDir temp
     write(storage+"/blobs/save.bin","save fixture");write(userdata+"/remotecache.vdf","cache fixture");
     try{
         write(temp.path()+"/macsteam/config.yaml","Apps:\n  - 620\n  - 848450 # base game\nDepotKeys:\n  12345:\n");
-        Backend backend;CHECK(backend.accountId()=="4242");CHECK(backend.managedIDs()=="620");CHECK(backend.detectedGames().size()>=3);
+        Backend backend;CHECK(backend.accountId()=="4242");CHECK(backend.managedIDs()=="620");CHECK(backend.detectedGames().size()>=3);CHECK(backend.cloudGames().isEmpty());
         CHECK(backend.saveManagedIDs("620, 20, 620",true).startsWith("Settings saved"));CHECK(backend.managedIDs()=="620, 20");
         CHECK(backend.saveManagedIDs("620,no",true).startsWith("Invalid"));CHECK(backend.managedIDs()=="620, 20");
         QFile cf(config+"/config.json");CHECK(cf.open(QIODevice::ReadOnly));CHECK(QJsonDocument::fromJson(cf.readAll()).object()["custom"]=="preserved");

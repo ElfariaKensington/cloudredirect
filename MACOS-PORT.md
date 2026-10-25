@@ -31,10 +31,13 @@ a helper. Both builds are ad-hoc signed.
   injectors, optional manual app selection and automatic discovery from macSteam and
   self-unlocking Lua scripts.
 - ARM64 Steam cloud RPC redirection and native cloud configuration KV helpers.
-- Native achievement/playtime hooks and shared stats/cloud merge code.
+- Native achievement/playtime hooks and shared stats/cloud merge code. Normal
+  startup seeds from one consolidated account blob, without per-game legacy
+  migration scans. Library stats requests pass through while seeding completes.
 - Native manifest pinning with exact 64-bit IDs and per-app selection.
-- Native Steam Cloud file manager, including AppID validation and explicit
-  confirmation before deletion.
+- Cloud file browser for the configured provider, showing logical save names
+  from the remote state/manifest. Its picker contains named cloud games only.
+  Separate Steam Community storage retains explicit deletion confirmation.
 - Cross-device Lua archive merge and its configuration switch.
 
 Internal Steam hooks require audited ARM64 Mach-O UUID

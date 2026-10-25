@@ -1,5 +1,6 @@
 #include "stats_hooks.h"
 #include "stats_handlers.h"
+#include "stats_store.h"
 #include "metadata_sync.h"
 #include "cloud_intercept.h"
 #include "protobuf.h"
@@ -21,7 +22,7 @@ bool TryHandleGetUserStats(const char* methodName, void* request, void* response
     if (!methodName || !g_serialize || !g_parse) return false;
     if (strcmp(methodName, StatsHandlers::RPC_GET_USER_STATS) != 0) return false;
     if (!MetadataSync::syncAchievements.load(std::memory_order_relaxed)) return false;
-    if (!request || !response) return false;
+    if (!request || !response || !StatsStore::WaitForSeed(0)) return false;
 
     auto reqBytes = g_serialize(request);
     if (reqBytes.empty()) return false;
@@ -53,7 +54,7 @@ void MergeLastPlayedTimes(const char* methodName, void* request, void* response)
     if (!methodName || !g_serialize || !g_parse) return;
     if (strcmp(methodName, StatsHandlers::RPC_GET_LAST_PLAYED) != 0) return;
     if (!MetadataSync::syncPlaytime.load(std::memory_order_relaxed)) return;
-    if (!response) return;
+    if (!response || !StatsStore::WaitForSeed(0)) return;
 
     std::vector<PB::Field> reqFields;
     if (request) {

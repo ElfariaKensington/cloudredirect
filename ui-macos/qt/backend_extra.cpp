@@ -1,6 +1,7 @@
 #include "backend.h"
 #include "utils.h"
 #include "managed_games.h"
+#include "credentials.h"
 #include <QFile>
 #include <QMap>
 #include <QSaveFile>
@@ -99,4 +100,27 @@ QVariantList Backend::detectedGames() const {
     for(auto game:games){game["label"]=game["name"].toString()+" ("+game["appId"].toString()+")";result.append(game);}
     std::sort(result.begin(),result.end(),[](const QVariant&a,const QVariant&b){return a.toMap()["label"].toString().localeAwareCompare(b.toMap()["label"].toString())<0;});
     result.prepend(QVariantMap{{"appId",760},{"label","Steam Community (760)"}});return result;
+}
+
+QVariantList Backend::cloudGames() const {
+    QVariantList result;
+    for(auto value:const_cast<Backend*>(this)->getAppDetails()) {
+        auto game=value.toMap();if(!m_remoteAppIds.contains(game["appId"].toUInt()))continue;
+        QString name=getAppName(game["appId"].toUInt());
+        if(name.startsWith("App "))continue; // Names are resolved asynchronously by the backend.
+        game["label"]=name;result.append(game);
+    }
+    std::sort(result.begin(),result.end(),[](const QVariant&a,const QVariant&b){return a.toMap()["label"].toString().localeAwareCompare(b.toMap()["label"].toString())<0;});return result;
+}
+void Backend::cloudSaveList(uint appId){
+    if(!appId||!m_remoteAppIds.contains(appId)){emit steamCloudFinished({},"Choose a game with cloud data.");return;}
+    auto* process=new QProcess(this);
+    connect(process,&QProcess::finished,this,[this,process,appId](int code,QProcess::ExitStatus status){
+        auto data=QJsonDocument::fromJson(process->readAllStandardOutput()).object();
+        QVariantMap result=data.toVariantMap();result["appId"]=appId;result["source"]="provider";
+        QString error;if(code||status!=QProcess::NormalExit||!data["success"].toBool())error=data["error"].toString("Could not read the cloud save inventory.");
+        emit steamCloudFinished(result,error);process->deleteLater();
+    });
+    connect(process,&QProcess::errorOccurred,this,[this,process](QProcess::ProcessError error){if(error==QProcess::FailedToStart){emit steamCloudFinished({},"Could not start the cloud helper.");process->deleteLater();}});
+    process->start(nativeCli(),{"list-cloud-save-files",m_providerName,m_accountId,QString::number(appId)});
 }

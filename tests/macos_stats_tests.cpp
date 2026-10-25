@@ -11,9 +11,11 @@
 int main(){
     char pattern[]="/tmp/cr-stats-tests-XXXXXX";auto* p=mkdtemp(pattern);if(!p)return 1;std::string root=p;
     try{
+        int legacyReads=0;
+        StatsStore::SetCloudProvider([](auto&){return true;},[](const auto&){},[&](uint32_t){++legacyReads;return std::string();},[&](uint32_t){++legacyReads;return std::string();});
         auto selected=[](uint32_t app){return app==620;};
         StatsStore::SetAccountIdProvider([](){return 4242u;});StatsStore::SetNamespacePredicate(selected);
-        StatsHandlers::SetNamespacePredicate(selected);StatsStore::Init(root,root+"/steam/");StatsHandlers::Init();StatsStore::SeedApps({620});
+        StatsHandlers::SetNamespacePredicate(selected);StatsStore::Init(root,root+"/steam/");StatsHandlers::Init();StatsStore::SeedApps({620},false);CHECK(legacyReads==0);CHECK(StatsStore::WaitForSeed(0));
         StatsStore::SetStat(620,7,42);StatsStore::SetAchievement(620,9,3,1700000000);
         StatsStore::FlushAll();
         StatsStore::AppStats data{};CHECK(StatsStore::LoadAppStats(620,data));

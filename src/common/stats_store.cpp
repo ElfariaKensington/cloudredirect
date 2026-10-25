@@ -1997,7 +1997,7 @@ static void MigrateLegacyPlaytimeBins(const std::vector<uint32_t>& appIds) {
     }
 }
 
-void SeedApps(const std::vector<uint32_t>& appIds) {
+void SeedApps(const std::vector<uint32_t>& appIds, bool migrateLegacy) {
     // Wait for g_diskAccountId so disk I/O is account-scoped (bg thread, safe to block).
     if (g_diskAccountId == 0) {
         uint32_t acct = 0;
@@ -2027,9 +2027,9 @@ void SeedApps(const std::vector<uint32_t>& appIds) {
     // reads each app's entry from the cached blob (no further network).
     RefreshCloudBlobCache();
     // Recover stats stranded under the old per-app cloud layout.
-    MigrateLegacyBlobs(appIds);
+    if (migrateLegacy) MigrateLegacyBlobs(appIds);
     // Recover playtime from the very first 2.2.x per-app .bin format (local+cloud).
-    MigrateLegacyPlaytimeBins(appIds);
+    if (migrateLegacy) MigrateLegacyPlaytimeBins(appIds);
     for (uint32_t appId : appIds) {
         if (appId == 0) continue;
         GetOrCreate(appId);  // merges cached cloud blob + imports native + loads local

@@ -25,7 +25,7 @@ ApplicationWindow {
         {name: "Stats & Scripts", symbol: "chart.bar", section: ""},
         {name: "Migration", symbol: "arrow.left.arrow.right", section: "Tools"},
         {name: "Manifest Pins", symbol: "pin", section: ""},
-        {name: "Steam Cloud", symbol: "externaldrive", section: ""}
+        {name: "Cloud Files", symbol: "externaldrive", section: ""}
     ]
     title: destinations[currentPage].name
     onSidebarVisibleChanged: nativeAppearance.setSidebarWidth(sidebarVisible ? 224 : 0)

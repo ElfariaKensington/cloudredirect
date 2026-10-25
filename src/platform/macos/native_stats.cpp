@@ -159,7 +159,7 @@ bool Initialize(const std::string& cloudRedirectRoot,StatsHooks::SerializeFn ser
     if(DobbyInstrument(send,OnSend)!=0){LOG("[Stats] Could not instrument native protobuf sends");return false;}
     if(LivePlaytime::Resolve(0,0,profile.parse))LivePlaytime::InstallUserCapture();
     state->active=true;
-    state->seed=std::thread([]{StatsStore::SeedApps(CloudIntercept::GetNamespaceApps());});
+    state->seed=std::thread([]{StatsStore::SeedApps(CloudIntercept::GetNamespaceApps(), false);});
     state->poller=std::thread([]{
         std::unique_lock<std::mutex> lock(state->mutex);
         while(state->active){
