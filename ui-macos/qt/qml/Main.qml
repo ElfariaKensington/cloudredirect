@@ -98,6 +98,10 @@ ApplicationWindow {
                             id: row
                             Layout.fillWidth: true
                             implicitHeight: 34
+                            leftPadding: 10
+                            rightPadding: 10
+                            topPadding: 0
+                            bottomPadding: 0
                             highlighted: root.currentPage === index
                             text: modelData.name
                             Accessible.role: Accessible.Button
@@ -110,8 +114,13 @@ ApplicationWindow {
                             }
                             contentItem: RowLayout {
                                 spacing: 10
-                                Image { source: "image://symbols/"+modelData.symbol+"/"+(row.highlighted ? "20251d" : palette.highlight.toString().substring(1)); sourceSize: Qt.size(36,36); Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
-                                Label { text: modelData.name; font.weight: row.highlighted ? Font.DemiBold : Font.Normal; Layout.fillWidth: true }
+                                Item {
+                                    Layout.preferredWidth: 20
+                                    Layout.preferredHeight: 20
+                                    Layout.alignment: Qt.AlignVCenter
+                                    Image { anchors.centerIn: parent; width: 18; height: 18; source: "image://symbols/"+modelData.symbol+"/"+(row.highlighted ? "20251d" : palette.highlight.toString().substring(1)); sourceSize: Qt.size(36,36) }
+                                }
+                                Label { text: modelData.name; font.weight: row.highlighted ? Font.DemiBold : Font.Normal; Layout.fillWidth: true; Layout.fillHeight: true; verticalAlignment: Text.AlignVCenter }
                             }
                         }
                     }
