@@ -8,6 +8,11 @@
 #include "credential_broker.h"
 #include "app_state.h"
 #include "cloud_storage.h"
+#include "file_util.h"
+#include "cloud_metadata_paths.h"
+#include <filesystem>
+#include <chrono>
+#include <set>
 #include "cloud_provider.h"
 #include <fstream>
 #include <unistd.h>
@@ -16,7 +21,9 @@
 #include <iterator>
 #include <string>
 int main(int argc,char**argv) {
-    if(argc==5 && std::string(argv[1])=="list-cloud-save-files") {
+    if((argc==5 && std::string(argv[1])=="list-cloud-save-files") ||
+       (argc>=7 && std::string(argv[1])=="delete-cloud-save-files" && std::string(argv[5])=="--confirmed")) {
+        const bool deleting=std::string(argv[1])=="delete-cloud-save-files";
         auto result=Json::Object();result.objVal["success"].type=Json::Type::Bool;
         auto fail=[&](const std::string& message){result.objVal["error"]=Json::String(message);std::cout<<Json::Stringify(result)<<std::endl;return 1;};
         std::string name=argv[2],root=XdgConfigHome()+"/CloudRedirect/";
@@ -26,10 +33,11 @@ int main(int argc,char**argv) {
         auto provider=CreateCloudProvider(name);
         if(!provider||!provider->Init(name=="folder"?cfg["sync_path"].str():ResolveProviderTokenPath(root,input,name))||!provider->IsAuthenticated())return fail("Cloud provider is unavailable. Reconnect it in Cloud Provider.");
         const auto prefix=std::to_string(account)+"/"+std::to_string(app)+"/";
-        std::vector<uint8_t> bytes;CloudStorage::CloudAppState state;
+        std::vector<uint8_t> bytes;CloudStorage::CloudAppState state;bool legacy=false;
         if(provider->Download(prefix+"state.cloudredirect",bytes)) {
             if(bytes.size()>16*1024*1024||!CloudStorage::DeserializeState(std::string(bytes.begin(),bytes.end()),state))return fail("Invalid cloud save inventory");
         } else {
+            legacy=true;
             if(provider->CheckExists(prefix+"state.cloudredirect")!=ICloudProvider::ExistsStatus::Missing)return fail("Could not read cloud save inventory");
             if(!provider->Download(prefix+"manifest.cloudredirect",bytes))return fail("No CloudRedirect save inventory found for this game in the selected cloud account.");
             if(bytes.size()>16*1024*1024)return fail("Cloud save inventory is too large");
@@ -37,8 +45,31 @@ int main(int argc,char**argv) {
             if(manifest.type!=Json::Type::Object)return fail("Invalid legacy cloud save inventory");
             for(const auto& [filename,value]:manifest.objVal){CloudStorage::FileEntry entry;entry.size=value["size"].integer();state.files[filename]=entry;}
         }
+        if(deleting){
+            if(legacy)return fail("Sync this game once to migrate its older cloud inventory before deleting individual files.");
+            if(state.hasActiveSession())return fail("Close this game on all devices before deleting its cloud files.");
+            if(state.cn==UINT64_MAX)return fail("Cloud change number is invalid.");
+            std::set<std::string> names;
+            for(int i=6;i<argc;++i){auto it=state.files.find(argv[i]);if(it==state.files.end()||it->second.persistState!=0||CloudIntercept::IsReservedBlobFilename(argv[i]))return fail("The selected files have changed. Refresh and select them again.");names.insert(argv[i]);}
+            auto backupDir=std::filesystem::path(root)/"cloud-file-backups";std::error_code ec;std::filesystem::create_directories(backupDir,ec);
+            const auto stamp=std::chrono::system_clock::now().time_since_epoch().count();
+            auto backup=backupDir/(std::to_string(account)+"-"+std::to_string(app)+"-"+std::to_string(stamp)+".json");
+            if(ec||!FileUtil::AtomicWriteText(backup.string(),std::string(bytes.begin(),bytes.end())))return fail("Could not save a recovery inventory; nothing was deleted.");
+            // Recheck the exact remote inventory before changing it. Keep CAS
+            // data for recovery; publish Steam deletion tombstones, not a blind
+            // removal of hashed blobs that another file might reference.
+            std::vector<uint8_t> current;
+            if(!provider->Download(prefix+"state.cloudredirect",current)||current!=bytes)return fail("Cloud data changed during deletion. Refresh and try again.");
+            for(const auto& name:names)state.files[name].persistState=2;
+            ++state.cn;
+            auto updated=CloudStorage::SerializeState(state);
+            if(!provider->Upload(prefix+"state.cloudredirect",(const uint8_t*)updated.data(),updated.size()))return fail("Could not publish the deletion; refresh to check the cloud state.");
+            auto cn=std::to_string(state.cn);provider->Upload(prefix+"cn.cloudredirect",(const uint8_t*)cn.data(),cn.size());
+            result.objVal["deleted"].type=Json::Type::Bool;result.objVal["deleted"].boolVal=true;
+            result.objVal["backup"]=Json::String(backup.string());
+        }
         auto files=Json::Array();uint64_t total=0;
-        for(const auto& [filename,entry]:state.files){if(entry.persistState!=0)continue;auto file=Json::Object();file.objVal["name"]=Json::String(filename);file.objVal["size"]=Json::Number(entry.size);file.objVal["persisted"].type=Json::Type::Bool;file.objVal["persisted"].boolVal=true;files.arrVal.push_back(std::move(file));total+=entry.size;}
+        for(const auto& [filename,entry]:state.files){if(entry.persistState!=0||CloudIntercept::IsReservedBlobFilename(filename))continue;auto file=Json::Object();file.objVal["name"]=Json::String(filename);file.objVal["size"]=Json::Number(entry.size);file.objVal["persisted"].type=Json::Type::Bool;file.objVal["persisted"].boolVal=true;files.arrVal.push_back(std::move(file));total+=entry.size;}
         provider->Shutdown();result.objVal["files"]=std::move(files);result.objVal["totalSize"]=Json::Number(total);result.objVal["success"].boolVal=true;
         std::cout<<Json::Stringify(result)<<std::endl;return 0;
     }

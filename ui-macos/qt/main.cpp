@@ -3,6 +3,7 @@
 #include <QQmlContext>
 #include <QQmlComponent>
 #include <QDebug>
+#include <QIcon>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QTimer>
@@ -12,6 +13,7 @@
 #include "oauthservice.h"
 int main(int argc,char**argv){
     QGuiApplication app(argc,argv);app.setOrganizationName("CloudRedirect");app.setApplicationName("CloudRedirect");app.setApplicationVersion(CR_VERSION);
+    app.setWindowIcon(QIcon(QCoreApplication::applicationDirPath()+"/../Resources/CloudRedirect.icns"));
     QQuickWindow::setDefaultAlphaBuffer(true);
     QQuickStyle::setStyle("macOS");MacAppearance appearance;Backend backend;Deployer deployer;OAuthService oauth;QQmlApplicationEngine engine;engine.addImageProvider("symbols",new SymbolProvider);engine.rootContext()->setContextProperty("nativeAppearance", &appearance);
     engine.rootContext()->setContextProperty("backend",&backend);engine.rootContext()->setContextProperty("deployer",&deployer);engine.rootContext()->setContextProperty("oauth",&oauth);engine.rootContext()->setContextProperty("macOSPort",true);

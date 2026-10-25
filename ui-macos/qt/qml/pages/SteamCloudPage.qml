@@ -37,13 +37,19 @@ Page {
     }
     Dialog {
         id: confirmDelete
-        title: "Delete Steam Community Files"
+        property bool targetCommunity: false
+        property int targetAppId: 0
+        property var targetNames: []
+        title: "Delete Cloud Files"
         modal: true
         anchors.centerIn: parent
         standardButtons: Dialog.Yes|Dialog.No
-        onAboutToShow: deleteMessage.text="Permanently delete "+page.selectedNames().length+" selected file(s) from Steam Community storage?"
+        onAboutToShow: {
+            targetCommunity=page.community;targetAppId=page.selectedAppId;targetNames=page.selectedNames()
+            deleteMessage.text="Delete "+targetNames.length+" selected cloud file(s)?"+(targetCommunity ? " This permanently deletes them from Steam Community." : " Close this game on all devices first. A recovery inventory is saved on this Mac; file data is retained for recovery.")
+        }
         Label {id: deleteMessage;wrapMode: Text.WordWrap;width: 400}
-        onAccepted: {busy=true;backend.steamCloudDelete(760,page.selectedNames())}
+        onAccepted: {busy=true;if(targetCommunity)backend.steamCloudDelete(760,targetNames);else backend.cloudSaveDelete(targetAppId,targetNames)}
     }
     ColumnLayout {
         anchors.fill: parent;anchors.margins: 28;spacing: 12
@@ -65,11 +71,10 @@ Page {
             Button {text: "Refresh";enabled: !busy&&selectedAppId>0;onClicked: refresh()}
         }
         RowLayout {
-            visible: community
             Button {text: "Select All";enabled: !busy;onClicked: {var copy={};for(var i=0;i<files.length;i++)copy[files[i].name]=true;selected=copy}}
             Button {text: "Clear Selection";enabled: !busy;onClicked: selected={}}
             Button {text: "Delete Selected…";enabled: !busy&&selectedNames().length>0;onClicked: confirmDelete.open()}
-            Button {text: "Steam Console…";onClicked: Qt.openUrlExternally("steam://open/console")}
+            Button {visible: community;text: "Steam Console…";onClicked: Qt.openUrlExternally("steam://open/console")}
         }
         SettingsGroup {
             Layout.fillHeight: true;Layout.fillWidth: true;padding: 4
@@ -81,9 +86,9 @@ Page {
                         required property var modelData
                         width: ListView.view.width
                         text: modelData.name+"  ·  "+backend.formatSize(modelData.size)
-                        highlighted: page.community&&page.selected[modelData.name]===true
+                        highlighted: page.selected[modelData.name]===true
                         enabled: !page.busy
-                        onClicked: {if(page.community){var copy=Object.assign({},page.selected);copy[modelData.name]=!copy[modelData.name];page.selected=copy}}
+                        onClicked: {var copy=Object.assign({},page.selected);copy[modelData.name]=!copy[modelData.name];page.selected=copy}
                     }
                 }
             }

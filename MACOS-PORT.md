@@ -37,7 +37,10 @@ a helper. Both builds are ad-hoc signed.
 - Native manifest pinning with exact 64-bit IDs and per-app selection.
 - Cloud file browser for the configured provider, showing logical save names
   from the remote state/manifest. Its picker contains named cloud games only.
-  Separate Steam Community storage retains explicit deletion confirmation.
+  Provider file deletion publishes deletion tombstones after confirmation,
+  saves a local recovery inventory, and retains content-addressed data for
+  recovery. Active cloud game sessions block deletion. Separate Steam Community
+  storage retains its direct deletion confirmation.
 - Cross-device Lua archive merge and its configuration switch.
 
 Internal Steam hooks require audited ARM64 Mach-O UUID

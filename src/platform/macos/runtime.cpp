@@ -34,6 +34,7 @@ void Status(bool active,const std::string& message) {
     LOG("[macOS] %s",message.c_str());
 }
 void Start() {
+    const auto startup=std::chrono::steady_clock::now();
     Log::Init();
     std::string root=XdgConfigHome()+"/CloudRedirect/";
     std::ifstream file(root+"config.json"); std::string input((std::istreambuf_iterator<char>(file)),{});
@@ -79,6 +80,7 @@ void Start() {
     if(!MacProfile::ReplaceSlots(profile.remoteStorage,{{24,(void*)hook_IsCloudEnabledForApp}})) {
         CloudHooks::BeginShutdown();Status(false,"Could not enable cloud storage hooks.");return;
     }
+    LOG("[macOS] Initialization completed in %lld ms",(long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-startup).count());
     Status(true,redirect?"Cloud save redirection active for the selected game IDs.":"Metadata runtime started. Enabled achievement, playtime and Lua features use the configured provider.");
 }
 __attribute__((constructor)) void Load() {

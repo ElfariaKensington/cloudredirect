@@ -34,6 +34,9 @@
 void MacAppearance::attach(QWindow* window) {
     NSView* view=(__bridge NSView*)(void*)window->winId();
     NSWindow* native=view.window;
+    NSString* iconPath=[NSBundle.mainBundle pathForResource:@"CloudRedirect" ofType:@"icns"];
+    NSImage* icon=iconPath ? [[NSImage alloc] initWithContentsOfFile:iconPath] : nil;
+    if(icon)NSApp.applicationIconImage=icon;
     native.titleVisibility=NSWindowTitleVisible;
     native.titlebarAppearsTransparent=YES;
     native.toolbarStyle=NSWindowToolbarStyleUnified;

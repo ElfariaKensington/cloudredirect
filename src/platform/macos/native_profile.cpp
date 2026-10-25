@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <sstream>
 #include <atomic>
+#include <mutex>
+#include <unordered_map>
 #include <algorithm>
 #include "xdg.h"
 namespace MacProfile {
@@ -18,6 +20,11 @@ bool Profile::Executable(const void* p) const {
     auto a=(uintptr_t)p;for(auto r:ranges)if(r.executable&&a>=r.begin&&a<r.end)return true;return false;
 }
 void** Profile::FindVtable(const char* name) const {
+    static std::mutex cacheMutex;
+    static std::unordered_map<std::string,void**> cache;
+    const std::string key=std::to_string(ranges.empty()?0:ranges.front().begin)+":"+name;
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    if(auto it=cache.find(key);it!=cache.end())return it->second;
     void** found=nullptr;
     for(auto r:ranges)for(auto p=r.begin;p+strlen(name)+1<=r.end;++p) {
         if(memcmp((void*)p,name,strlen(name)+1))continue;
@@ -35,6 +42,7 @@ void** Profile::FindVtable(const char* name) const {
             }
         }
     }
+    if(found)cache[key]=found;
     return found;
 }
 void* Profile::UniquePattern(const char* hex) const {
@@ -58,11 +66,18 @@ bool Resolve(Profile& out,std::string& error,bool allowLoad) {
     for(uint32_t i=0;i<mh->ncmds;++i){if(c->cmd==LC_UUID){const unsigned char expected[]={0x1d,0x28,0x26,0x16,0xb6,0x7e,0x30,0xa6,0xb0,0xaf,0xe4,0xd5,0x88,0x06,0x10,0xe7};audited=!memcmp(((const uuid_command*)c)->uuid,expected,16);}
         if(c->cmd==LC_SEGMENT_64){auto*s=(const segment_command_64*)c;if((s->initprot&VM_PROT_READ)&&s->vmsize)out.ranges.push_back({s->vmaddr+out.slide,s->vmaddr+out.slide+s->vmsize,(bool)(s->initprot&VM_PROT_EXECUTE),(bool)(s->initprot&VM_PROT_WRITE)});}c=(const load_command*)((const char*)c+c->cmdsize);}
     if(!audited){error="This Steam build has not been validated for ARM64 cloud interception; hooks remain inactive";return false;}
+    // UUID validation above remains mandatory; cache only successful resolution
+    // for this loaded image so startup consumers do not rescan its entire text.
+    static std::mutex profileMutex;
+    static Profile cached;
+    std::lock_guard<std::mutex> profileLock(profileMutex);
+    if(cached.transport && !out.ranges.empty() && cached.slide==out.slide && cached.ranges.front().begin==out.ranges.front().begin){out=cached;return true;}
     out.transport=out.FindVtable("30CClientUnifiedServiceTransport");
     out.remoteStorage=out.FindVtable("18CUserRemoteStorage");
     out.serialize=(SerializeFn)out.UniquePattern("FF C3 02 D1 F6 57 08 A9 F4 4F 09 A9 FD 7B 0A A9 FD 83 02 91 F3 03 01 AA F4 03 00 AA ?? ?? ?? ?? ?? ?? ?? ?? 08 01 40 F9 A8 83 1D F8 08 00 40 F9 08 29 40 F9 00 01 3F D6");
     out.parse=(ParseFn)out.UniquePattern("F6 57 BD A9 F4 4F 01 A9 FD 7B 02 A9 FD 83 00 91 E2 01 F8 37 F4 03 01 AA F3 03 00 AA F5 03 02 2A 08 00 40 F9 08 15 40 F9 00 01 3F D6");
     if(!out.transport||!out.remoteStorage||!out.serialize||!out.parse){error=std::string("ARM64 profile missing:")+(out.transport?"":" transport")+(out.serialize?"":" serializer")+(out.parse?"":" parser");return false;}
+    cached=out;
     return true;
 }
 bool TestProtobuf(const Profile& p,std::string& error){

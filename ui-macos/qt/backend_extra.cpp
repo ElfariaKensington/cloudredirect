@@ -112,7 +112,9 @@ QVariantList Backend::cloudGames() const {
     }
     std::sort(result.begin(),result.end(),[](const QVariant&a,const QVariant&b){return a.toMap()["label"].toString().localeAwareCompare(b.toMap()["label"].toString())<0;});return result;
 }
-void Backend::cloudSaveList(uint appId){
+void Backend::cloudSaveList(uint appId){runCloudSaveCommand(appId,{});}
+void Backend::cloudSaveDelete(uint appId,const QStringList& names){if(!names.isEmpty())runCloudSaveCommand(appId,names);}
+void Backend::runCloudSaveCommand(uint appId,const QStringList& names){
     if(!appId||!m_remoteAppIds.contains(appId)){emit steamCloudFinished({},"Choose a game with cloud data.");return;}
     auto* process=new QProcess(this);
     connect(process,&QProcess::finished,this,[this,process,appId](int code,QProcess::ExitStatus status){
@@ -122,5 +124,7 @@ void Backend::cloudSaveList(uint appId){
         emit steamCloudFinished(result,error);process->deleteLater();
     });
     connect(process,&QProcess::errorOccurred,this,[this,process](QProcess::ProcessError error){if(error==QProcess::FailedToStart){emit steamCloudFinished({},"Could not start the cloud helper.");process->deleteLater();}});
-    process->start(nativeCli(),{"list-cloud-save-files",m_providerName,m_accountId,QString::number(appId)});
+    QStringList args{names.isEmpty()?"list-cloud-save-files":"delete-cloud-save-files",m_providerName,m_accountId,QString::number(appId)};
+    if(!names.isEmpty()){args<<"--confirmed";args.append(names);}
+    process->start(nativeCli(),args);
 }

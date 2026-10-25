@@ -70,6 +70,8 @@ public:
     Q_INVOKABLE void steamCloudDelete(uint appId,const QStringList& names);
     Q_INVOKABLE QVariantList cloudGames() const;
     Q_INVOKABLE void cloudSaveList(uint appId);
+    Q_INVOKABLE void cloudSaveDelete(uint appId,const QStringList& names);
+    void runCloudSaveCommand(uint appId,const QStringList& names);
     Q_INVOKABLE QVariantList detectedGames() const;
     Q_INVOKABLE QString managedIDs() const;
     Q_INVOKABLE bool redirectEnabled() const;
