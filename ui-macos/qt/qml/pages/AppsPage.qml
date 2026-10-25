@@ -264,7 +264,7 @@ Page {
             }
 
             Label {
-                text: "Cloud saves managed by CloudRedirect. Search by name or App ID."
+                text: (backend.detectedGames().length - 1) + " known games. macSteam games are managed automatically; games with saved data appear below."
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
                 Layout.leftMargin: 28

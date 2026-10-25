@@ -1742,7 +1742,7 @@ bool Backend::saveR2Credentials(const QString &accountId,
     // OAuth token writer in oauthservice.cpp.
     const QByteArray data = QJsonDocument(o).toJson();
 #ifdef Q_OS_MACOS
-    if(!writeCredential(credPath,data))return false;
+    if(!writeCredential(credPath,data,true))return false;
 #else
     const QString tempPath = credPath + ".tmp";
     int fd = open(tempPath.toUtf8().constData(),
@@ -1904,7 +1904,7 @@ bool Backend::saveS3Credentials(const QString &accessKeyId,
     // R2 credential writer above.
     const QByteArray data = QJsonDocument(o).toJson();
 #ifdef Q_OS_MACOS
-    if(!writeCredential(credPath,data))return false;
+    if(!writeCredential(credPath,data,true))return false;
 #else
     const QString tempPath = credPath + ".tmp";
     int fd = open(tempPath.toUtf8().constData(),

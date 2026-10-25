@@ -55,3 +55,12 @@ target_include_directories(macos_lua_tests PRIVATE src/platform/macos src/common
 target_link_libraries(macos_lua_tests PRIVATE cloud_redirect)
 add_test(NAME macos_lua_tests COMMAND macos_lua_tests)
 set_tests_properties(macos_lua_tests PROPERTIES TIMEOUT 30)
+
+add_executable(cloud_redirect_credentials src/platform/macos/credential_helper.mm)
+target_include_directories(cloud_redirect_credentials PRIVATE src/platform/macos src/common)
+target_link_libraries(cloud_redirect_credentials PRIVATE "-framework Foundation" "-framework Security")
+add_executable(macos_credential_tests tests/macos_credential_tests.cpp)
+target_include_directories(macos_credential_tests PRIVATE src/platform/macos)
+target_link_libraries(macos_credential_tests PRIVATE cloud_redirect)
+add_test(NAME macos_credential_tests COMMAND macos_credential_tests)
+set_tests_properties(macos_credential_tests PROPERTIES TIMEOUT 30)

@@ -5,6 +5,7 @@
 #include "native_profile.h"
 #include "native_kv.h"
 #include "live_playtime.h"
+#include "credential_broker.h"
 #include "cloud_provider.h"
 #include <fstream>
 #include <unistd.h>
@@ -14,11 +15,15 @@
 #include <string>
 int main(int argc,char**argv) {
     if(argc==2 && std::string(argv[1])=="purge-credentials") {
-        const void* keys[]={kSecClass,kSecAttrService};const void* values[]={kSecClassGenericPassword,CFSTR("com.elfaria.cloudredirect.tokens")};
-        auto query=CFDictionaryCreate(nullptr,keys,values,2,&kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
-        auto status=SecItemDelete(query);CFRelease(query);return status==errSecSuccess||status==errSecItemNotFound?0:1;
+        bool ok=true;
+        for(auto service:{CFSTR("com.elfaria.cloudredirect.tokens"),CFSTR("com.elfaria.cloudredirect.credentials.v2")}){
+            const void* keys[]={kSecClass,kSecAttrService};const void* values[]={kSecClassGenericPassword,service};
+            auto query=CFDictionaryCreate(nullptr,keys,values,2,&kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
+            auto status=SecItemDelete(query);CFRelease(query);ok=ok&&(status==errSecSuccess||status==errSecItemNotFound);
+        }
+        return ok?0:1;
     }
-    if(argc==3&&(std::string(argv[1])=="read-credentials-path"||std::string(argv[1])=="store-credentials-path")) {
+    if((argc==3||(argc==4&&std::string(argv[3])=="--background"))&&(std::string(argv[1])=="read-credentials-path"||std::string(argv[1])=="store-credentials-path")) {
         auto store=CreateTokenStore();
         if(std::string(argv[1])=="read-credentials-path") {
             auto value=store->Read(argv[2]);if(value.empty())return 1;
@@ -26,7 +31,7 @@ int main(int argc,char**argv) {
         }
         std::string value((std::istreambuf_iterator<char>(std::cin)),{});
         if(value.size()>1024*1024||Json::Parse(value).type!=Json::Type::Object)return 2;
-        return store->Write(argv[2],value)?0:1;
+        return (argc==4?store->Write(argv[2],value):MacCredentials::WriteInteractive(argv[2],value))?0:1;
     }
     if(argc==2 && std::string(argv[1])=="diagnose") {
         MacProfile::Profile profile; std::string error;
@@ -55,7 +60,7 @@ int main(int argc,char**argv) {
         auto store=CreateTokenStore();
         std::string root=XdgConfigHome()+"/CloudRedirect/";
         std::ifstream file(root+"config.json"); std::string config((std::istreambuf_iterator<char>(file)),{});
-        bool ok=store->Write(ResolveProviderTokenPath(root,config,provider),input);
+        bool ok=MacCredentials::WriteInteractive(ResolveProviderTokenPath(root,config,provider),input);
         std::cout << (ok?"{\"ok\":true}":"{\"error\":\"Could not save credentials in Keychain\"}") << std::endl;
         return ok?0:1;
     }

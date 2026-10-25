@@ -431,7 +431,7 @@ void OAuthService::exchangeCodeForTokens(const QString &code, int retryCount)
         QByteArray tokenJson = tokenDoc.toJson(QJsonDocument::Indented);
 
 #ifdef Q_OS_MACOS
-        if(!writeCredential(m_tokenPath,tokenJson)){emit authFailed(m_provider,"Could not store credentials in Keychain");cancel();return;}
+        if(!writeCredential(m_tokenPath,tokenJson,true)){emit authFailed(m_provider,"Could not store credentials in Keychain");cancel();return;}
 #else
         QString provider, account;
         if (parseTokenPath(m_tokenPath, provider, account)) {

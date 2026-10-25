@@ -26,8 +26,10 @@ a helper. Both builds are ad-hoc signed.
   grouped preferences, provider configuration, OAuth, app management,
   backup/restore and migration screens. The shared Qt backend retains native
   macOS paths.
-- Keychain credentials, native runtime installation preserving existing Steam
-  injectors, manual app selection and automatic self-unlocking Lua discovery.
+- Keychain credentials through a separate helper with noninteractive background
+  reads and updates, native runtime installation preserving existing Steam
+  injectors, optional manual app selection and automatic discovery from macSteam and
+  self-unlocking Lua scripts.
 - ARM64 Steam cloud RPC redirection and native cloud configuration KV helpers.
 - Native achievement/playtime hooks and shared stats/cloud merge code.
 - Native manifest pinning with exact 64-bit IDs and per-app selection.

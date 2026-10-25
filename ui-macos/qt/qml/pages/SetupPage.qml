@@ -136,7 +136,7 @@ Page {
                     Rectangle { Layout.fillWidth: true; height: 1; color: Qt.alpha(palette.text,0.08) }
                     Label { text: "Additional game IDs"; font.weight: Font.Medium }
                     TextField { id: nativeGameIDs; Layout.fillWidth: true; placeholderText: "620, 848450, …"; text: backend.managedIDs(); Accessible.name: "Additional game IDs" }
-                    Label { text: "Optional. Games with self-unlocking Lua scripts are included automatically."; color: palette.placeholderText; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                    Label { text: "Optional. Games in macSteam and self-unlocking Lua scripts are included automatically."; color: palette.placeholderText; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                     RowLayout {
                         Layout.fillWidth: true
                         Label { id: nativeResult; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: palette.placeholderText; font.pixelSize: 12 }

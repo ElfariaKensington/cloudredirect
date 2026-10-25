@@ -1,7 +1,8 @@
 #include "backend.h"
 #include "utils.h"
-#include "lua_namespace.h"
+#include "managed_games.h"
 #include <QFile>
+#include <QMap>
 #include <QSaveFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -13,7 +14,7 @@ bool Backend::redirectEnabled()const{return config()["enabled"].toBool(false);}
 QString Backend::saveManagedIDs(const QString& ids,bool enabled){
     QJsonArray apps;QSet<uint> seen;
     for(const auto& token:ids.split(QRegularExpression("[,\\s]+"),Qt::SkipEmptyParts)){bool ok=false;uint id=token.toUInt(&ok);if(!ok||id==0||id>0xffffff)return "Invalid game ID: "+token;if(!seen.contains(id)){apps.append((int)id);seen.insert(id);}}
-    if(enabled&&apps.isEmpty()&&LuaNamespace::Discover((m_steamPath+"/config/stplug-in").toStdString()).empty())return "Select game IDs or install self-unlocking Lua scripts.";
+    if(enabled&&apps.isEmpty()&&ManagedGames::Discover(m_steamPath.toStdString(),QFileInfo(crConfigDir()).absolutePath().toStdString()).empty())return "Select game IDs or install self-unlocking Lua scripts.";
     auto cfg=config();cfg["apps"]=apps;cfg["enabled"]=enabled;QDir().mkpath(crConfigDir());
     QSaveFile file(crConfigDir()+"/config.json");if(!file.open(QIODevice::WriteOnly)||file.write(QJsonDocument(cfg).toJson())<0||!file.commit())return "Could not save settings.";
     file.setPermissions(QFile::ReadOwner|QFile::WriteOwner);refreshStatus();return "Settings saved. Restart Steam to apply.";
@@ -84,4 +85,18 @@ void Backend::setSyncLuas(bool enabled) {
     const auto bytes = QJsonDocument(cfg).toJson();
     if (file.write(bytes) != bytes.size() || !file.commit()) return;
     emit settingsChanged();
+}
+
+QVariantList Backend::detectedGames() const {
+    QMap<uint,QVariantMap> games;
+    for(auto id:ManagedGames::Discover(m_steamPath.toStdString(),QFileInfo(crConfigDir()).absolutePath().toStdString())) {
+        games[id]={{"appId",id},{"name",getAppName(id)}};
+    }
+    for(auto value:const_cast<Backend*>(this)->getAppDetails()) {
+        auto game=value.toMap();uint id=game["appId"].toUInt();if(id)games[id]=game;
+    }
+    QVariantList result;
+    for(auto game:games){game["label"]=game["name"].toString()+" ("+game["appId"].toString()+")";result.append(game);}
+    std::sort(result.begin(),result.end(),[](const QVariant&a,const QVariant&b){return a.toMap()["label"].toString().localeAwareCompare(b.toMap()["label"].toString())<0;});
+    result.prepend(QVariantMap{{"appId",760},{"label","Steam Community (760)"}});return result;
 }

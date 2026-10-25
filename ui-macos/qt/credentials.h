@@ -9,10 +9,10 @@ inline QByteArray readCredential(const QString& path) {
     if(!p.waitForFinished(10000)||p.exitCode()!=0)return {};
     return p.readAllStandardOutput();
 }
-inline bool writeCredential(const QString& path,const QByteArray& value){
-    QProcess p;p.start(nativeCli(),{"store-credentials-path",path});
+inline bool writeCredential(const QString& path,const QByteArray& value,bool interactive=false){
+    QProcess p;QStringList args{"store-credentials-path",path};if(!interactive)args<<"--background";p.start(nativeCli(),args);
     if(!p.waitForStarted(5000))return false;p.write(value);p.closeWriteChannel();
-    return p.waitForFinished(10000)&&p.exitCode()==0;
+    return p.waitForFinished(130000)&&p.exitCode()==0;
 }
 class CredentialFile: public QBuffer {
     QString path;

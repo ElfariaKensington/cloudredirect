@@ -12,6 +12,8 @@ APP="$DEST/CloudRedirect.app"
 if [ -d "$APP" ]; then rm -rf "$APP"; fi
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/runtime"
 cp "$ROOT/ui-macos/.build/release/CloudRedirect" "$APP/Contents/MacOS/CloudRedirect"
+cp "$ROOT/build-macos/cloud_redirect_credentials" "$APP/Contents/Resources/runtime/"
+codesign --force --sign - "$APP/Contents/Resources/runtime/cloud_redirect_credentials"
 cp "$ROOT/build-macos/cloud760_tool" "$APP/Contents/Resources/runtime/"
 codesign --force --sign - "$APP/Contents/Resources/runtime/cloud760_tool"
 cp "$ROOT/build-macos/cloud_redirect.dylib" "$ROOT/build-macos/cloud_redirect_cli" "$APP/Contents/Resources/runtime/"

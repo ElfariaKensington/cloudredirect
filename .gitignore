@@ -33,3 +33,4 @@ out/
 !tests/macos_stats_tests.cpp
 !tests/macos_manifest_tests.cpp
 !tests/macos_lua_tests.cpp
+!tests/macos_credential_tests.cpp

@@ -8,14 +8,24 @@ Page {
     property var files: []
     property var selected: ({})
     property bool busy: false
-    property string status: "Start Steam and sign in, then connect to an AppID. Default 760 is Steam Community cloud storage."
-    function refresh() { busy=true; backend.steamCloudList(Number(appId.text)) }
+    property string status: "Select a game to view its Steam Cloud files. Steam Community contains saves stored under App ID 760."
+    property var games: backend.detectedGames()
+    property int selectedAppId: games.length ? games[gamePicker.currentIndex >= 0 ? gamePicker.currentIndex : 0].appId : 760
+    onSelectedAppIdChanged: { files=[];selected={} }
+    function refresh() { busy=true; backend.steamCloudList(selectedAppId) }
+    Connections {
+        target: backend
+        function onAppsChanged() { page.games=backend.detectedGames() }
+        function onRemoteAppsFetched() { page.games=backend.detectedGames() }
+        function onAppNamesResolved() { page.games=backend.detectedGames() }
+    }
     function selectedNames() { var names=[];for(var key in selected)if(selected[key])names.push(key);return names }
     Connections {
         target: backend
         function onSteamCloudFinished(result,error) {
             busy=false
             if(error!=""){status=error;return}
+            if(result.appId !== page.selectedAppId) return
             if(result.deleted){status="Deletion completed.";refresh();return}
             files=result.files;selected={}
             status=files.length+" file(s). Account cloud: "+(result.accountEnabled?"enabled":"disabled")+". App cloud: "+(result.appEnabled?"enabled":"disabled")+". Available: "+backend.formatSize(result.availableBytes)+" / "+backend.formatSize(result.totalBytes)
@@ -27,16 +37,20 @@ Page {
         modal: true
         anchors.centerIn: parent
         standardButtons: Dialog.Yes|Dialog.No
-        Label {text: "Permanently delete "+page.selectedNames().length+" selected file(s) from AppID "+appId.text+"?";wrapMode: Text.WordWrap;width: 400}
-        onAccepted: {busy=true;backend.steamCloudDelete(Number(appId.text),page.selectedNames())}
+        onAboutToShow: deleteMessage.text = "Permanently delete "+page.selectedNames().length+" selected file(s) from AppID "+page.selectedAppId+"?"
+        Label {id: deleteMessage; wrapMode: Text.WordWrap;width: 400}
+        onAccepted: {busy=true;backend.steamCloudDelete(selectedAppId,page.selectedNames())}
     }
     ColumnLayout {
         anchors.fill: parent;anchors.margins: 28;spacing: 12
         Label {text: "Steam Cloud File Manager";font.pixelSize: 24;font.weight: Font.Bold}
         RowLayout {
-            Label {text: "AppID"}
-            TextField {id: appId;text: "760";validator: IntValidator {bottom: 1;top: 2147483647} enabled: !busy;Layout.preferredWidth: 100}
-            Button {text: "Connect";enabled: !busy&&appId.acceptableInput;onClicked: refresh()}
+            ComboBox {
+                id: gamePicker; Layout.fillWidth: true; enabled: !busy
+                model: page.games; textRole: "label"; Accessible.name: "Game"
+                onActivated: {page.files=[];page.selected={};refresh()}
+            }
+            Button {text: "Connect";enabled: !busy&&games.length>0;onClicked: refresh()}
             Button {text: "Open Console…";onClicked: Qt.openUrlExternally("steam://open/console")}
         }
         RowLayout {
