@@ -68,12 +68,12 @@ Page {
                 displayText: games.length ? currentText : "No cloud games found"
                 onActivated: {files=[];selected={};refresh()}
             }
-            Button {text: "Refresh";enabled: !busy&&selectedAppId>0;onClicked: refresh()}
+            Button {text: "Refresh";enabled: !busy&&selectedAppId>0;Accessible.name: "Refresh cloud files";onClicked: refresh()}
         }
         RowLayout {
-            Button {text: "Select All";enabled: !busy;onClicked: {var copy={};for(var i=0;i<files.length;i++)copy[files[i].name]=true;selected=copy}}
-            Button {text: "Clear Selection";enabled: !busy;onClicked: selected={}}
-            Button {text: "Delete Selected…";enabled: !busy&&selectedNames().length>0;onClicked: confirmDelete.open()}
+            Button {text: "Select All";enabled: !busy;Accessible.name: "Select all cloud files";onClicked: {var copy={};for(var i=0;i<files.length;i++)copy[files[i].name]=true;selected=copy}}
+            Button {text: "Clear Selection";enabled: !busy;Accessible.name: "Clear cloud file selection";onClicked: selected={}}
+            Button {text: "Delete Selected…";enabled: !busy&&selectedNames().length>0;Accessible.name: "Delete selected cloud files";onClicked: confirmDelete.open()}
             Button {visible: community;text: "Steam Console…";onClicked: Qt.openUrlExternally("steam://open/console")}
         }
         SettingsGroup {
@@ -84,10 +84,24 @@ Page {
                     model: page.files
                     delegate: ItemDelegate {
                         required property var modelData
+                        id: fileRow
                         width: ListView.view.width
                         text: modelData.name+"  ·  "+backend.formatSize(modelData.size)
                         highlighted: page.selected[modelData.name]===true
+                        Accessible.name: modelData.name+", "+backend.formatSize(modelData.size)+(highlighted ? ", selected" : "")
                         enabled: !page.busy
+                        contentItem: Label {
+                            text: fileRow.text
+                            color: palette.text
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                            leftPadding: 10
+                        }
+                        background: Rectangle {
+                            radius: 6
+                            color: fileRow.highlighted ? Qt.alpha(palette.highlight, 0.24) : fileRow.hovered ? Qt.alpha(palette.text, 0.06) : "transparent"
+                            border.color: fileRow.highlighted ? Qt.alpha(palette.highlight, 0.7) : "transparent"
+                        }
                         onClicked: {var copy=Object.assign({},page.selected);copy[modelData.name]=!copy[modelData.name];page.selected=copy}
                     }
                 }

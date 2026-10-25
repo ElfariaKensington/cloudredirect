@@ -48,7 +48,8 @@ void MacAppearance::attach(QWindow* window) {
     // NSToolbar does not retain its delegate. Keep it alive with the QObject.
     void* retained=(__bridge_retained void*)delegate;
     connect(this,&QObject::destroyed,[retained]{CFRelease(retained);});
-    NSVisualEffectView* effect=[[NSVisualEffectView alloc] initWithFrame:NSMakeRect(view.frame.origin.x,view.frame.origin.y,224,view.frame.size.height)];
+    CGFloat titlebarHeight=MAX(0,native.frame.size.height-native.contentLayoutRect.size.height);
+    NSVisualEffectView* effect=[[NSVisualEffectView alloc] initWithFrame:NSMakeRect(view.frame.origin.x,view.frame.origin.y,224,view.frame.size.height+titlebarHeight)];
     effect.material=NSVisualEffectMaterialSidebar;
     effect.blendingMode=NSVisualEffectBlendingModeBehindWindow;
     effect.state=NSVisualEffectStateFollowsWindowActiveState;

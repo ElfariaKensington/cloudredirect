@@ -81,6 +81,12 @@ Page {
         standardButtons: Dialog.NoButton
         anchors.centerIn: parent
         width: Math.min(parent.width - 80, 480)
+        padding: 22
+        background: Rectangle {
+            radius: 14
+            color: palette.base
+            border.color: Qt.alpha(palette.text, 0.12)
+        }
 
         property var targetApp: null
         property int countdown: 5
@@ -203,7 +209,7 @@ Page {
         id: orphanDialog
         title: "Orphan Scan Results"
         modal: true
-        standardButtons: Dialog.Ok
+        standardButtons: Dialog.NoButton
         anchors.centerIn: parent
         width: Math.min(parent.width - 80, 480)
 
@@ -213,12 +219,38 @@ Page {
             anchors.fill: parent
             spacing: 8
 
-            Label {
-                text: orphanDialog.results.length === 0
-                      ? "No orphan blobs found. Storage is clean."
-                      : orphanDialog.results.length + " app(s) with orphan blobs:"
-                wrapMode: Text.WordWrap
+            RowLayout {
                 Layout.fillWidth: true
+                spacing: 12
+                Image {
+                    source: "image://symbols/" + (orphanDialog.results.length === 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill") + "/" + palette.highlight.toString().substring(1)
+                    sourceSize: Qt.size(48, 48)
+                    Layout.preferredWidth: 28
+                    Layout.preferredHeight: 28
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Label {
+                        text: orphanDialog.results.length === 0 ? "Storage is clean" : "Orphan blobs found"
+                        font.pixelSize: 16
+                        font.weight: Font.DemiBold
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: orphanDialog.results.length === 0 ? "No orphan blobs were found." : orphanDialog.results.length + " app(s) have orphan blobs:"
+                        wrapMode: Text.WordWrap
+                        color: palette.text
+                        Layout.fillWidth: true
+                    }
+                }
+            }
+
+            Button {
+                text: "Done"
+                Layout.alignment: Qt.AlignRight
+                Accessible.name: "Done"
+                highlighted: true
+                onClicked: orphanDialog.close()
             }
 
             Repeater {
@@ -287,6 +319,7 @@ Page {
 
                 Button {
                     text: "Scan Orphans"
+                    Accessible.name: "Scan for orphan blobs"
                     onClicked: {
                         var results = backend ? backend.scanOrphans() : []
                         orphanDialog.results = results
@@ -296,6 +329,7 @@ Page {
 
                 Button {
                     text: "Refresh"
+                    Accessible.name: "Refresh games and cloud status"
                     onClicked: {
                         if (backend) {
                             backend.refreshStatus()
@@ -371,9 +405,16 @@ Page {
                         Item { Layout.fillWidth: true }
 
                         Button {
+                            Accessible.name: "Delete saves for " + modelData.name
+                            Accessible.description: "Opens a confirmation before deleting this game's local saves"
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Delete saves"
+                            icon.name: "user-trash"
                             icon.source: "image://symbols/trash/8e8e93"
-                            text: "Delete…"
-                            display: AbstractButton.TextBesideIcon
+                            display: AbstractButton.IconOnly
+                            flat: true
+                            implicitWidth: 36
+                            implicitHeight: 36
                             onClicked: {
                                 deleteDialog.targetApp = modelData
                                 deleteDialog.open()

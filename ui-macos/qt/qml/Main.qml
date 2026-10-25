@@ -13,6 +13,8 @@ ApplicationWindow {
     minimumHeight: 560
     visible: true
     color: "transparent"
+    palette.highlight: "#39865b"
+    palette.highlightedText: "#ffffff"
     font.pixelSize: 13
     property int currentPage: 0
     property bool sidebarVisible: true
@@ -72,7 +74,10 @@ ApplicationWindow {
             Layout.fillHeight: true
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 12
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                anchors.bottomMargin: 12
+                anchors.topMargin: 0
                 spacing: 2
                 Repeater {
                     model: root.destinations
