@@ -21,8 +21,11 @@ a helper. Both builds are ad-hoc signed.
 
 ## Implemented in this branch
 
-- Original Qt dashboard, provider configuration, OAuth, app management,
-  backup/restore and migration screens, adapted to native macOS paths.
+- A macOS-specific desktop interface with grouped sidebar navigation, an AppKit
+  toolbar, native sidebar material, SF Symbols, system controls and appearance,
+  grouped preferences, provider configuration, OAuth, app management,
+  backup/restore and migration screens. The shared Qt backend retains native
+  macOS paths.
 - Keychain credentials, native runtime installation preserving existing Steam
   injectors, manual app selection and automatic self-unlocking Lua discovery.
 - ARM64 Steam cloud RPC redirection and native cloud configuration KV helpers.

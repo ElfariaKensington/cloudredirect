@@ -1,7 +1,9 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../components"
 Page {
+    background: Rectangle { color: palette.window }
     id: page
     property var files: []
     property var selected: ({})
@@ -29,13 +31,13 @@ Page {
         onAccepted: {busy=true;backend.steamCloudDelete(Number(appId.text),page.selectedNames())}
     }
     ColumnLayout {
-        anchors.fill: parent;anchors.margins: 20;spacing: 12
-        Label {text: "Steam Cloud File Manager";font.pointSize: 16;font.bold: true}
+        anchors.fill: parent;anchors.margins: 28;spacing: 12
+        Label {text: "Steam Cloud File Manager";font.pixelSize: 24;font.weight: Font.Bold}
         RowLayout {
             Label {text: "AppID"}
-            TextField {id: appId;text: "760";validator: IntValidator {bottom: 1;top: 2147483647} enabled: !busy;Layout.preferredWidth: 120}
-            Button {text: "Connect / Refresh";enabled: !busy&&appId.acceptableInput;onClicked: refresh()}
-            Button {text: "Steam Console";onClicked: Qt.openUrlExternally("steam://open/console")}
+            TextField {id: appId;text: "760";validator: IntValidator {bottom: 1;top: 2147483647} enabled: !busy;Layout.preferredWidth: 100}
+            Button {text: "Connect";enabled: !busy&&appId.acceptableInput;onClicked: refresh()}
+            Button {text: "Open Console…";onClicked: Qt.openUrlExternally("steam://open/console")}
         }
         RowLayout {
             Button {text: "Select All";enabled: !busy;onClicked: {var copy={};for(var i=0;i<files.length;i++)copy[files[i].name]=true;selected=copy}}
@@ -43,8 +45,10 @@ Page {
             Button {text: "Delete Selected";enabled: !busy&&selectedNames().length>0;onClicked: confirmDelete.open()}
             BusyIndicator {running: busy;visible: busy;Layout.preferredHeight: 24;Layout.preferredWidth: 24}
         }
-        ScrollView {
-            Layout.fillHeight: true;Layout.fillWidth: true;clip: true
+        SettingsGroup {
+            Layout.fillHeight: true;Layout.fillWidth: true;padding: 4
+            ScrollView {
+                anchors.fill: parent;clip: true
             ListView {
                 model: page.files
                 delegate: CheckDelegate {
@@ -57,6 +61,7 @@ Page {
                 }
             }
         }
-        Label {text: status;textFormat: Text.PlainText;wrapMode: Text.WordWrap;Layout.fillWidth: true}
+        }
+        Label {text: status; font.pixelSize: 12; color: palette.placeholderText;textFormat: Text.PlainText;wrapMode: Text.WordWrap;Layout.fillWidth: true}
     }
 }

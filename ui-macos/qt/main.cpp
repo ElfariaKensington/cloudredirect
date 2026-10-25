@@ -4,12 +4,16 @@
 #include <QQmlComponent>
 #include <QDebug>
 #include <QQuickStyle>
+#include <QQuickWindow>
+#include <QTimer>
+#include "macappearance.h"
 #include "backend.h"
 #include "deployer.h"
 #include "oauthservice.h"
 int main(int argc,char**argv){
     QGuiApplication app(argc,argv);app.setOrganizationName("CloudRedirect");app.setApplicationName("CloudRedirect");app.setApplicationVersion(CR_VERSION);
-    QQuickStyle::setStyle("Fusion");QQmlApplicationEngine engine;Backend backend;Deployer deployer;OAuthService oauth;
+    QQuickWindow::setDefaultAlphaBuffer(true);
+    QQuickStyle::setStyle("macOS");MacAppearance appearance;Backend backend;Deployer deployer;OAuthService oauth;QQmlApplicationEngine engine;engine.addImageProvider("symbols",new SymbolProvider);engine.rootContext()->setContextProperty("nativeAppearance", &appearance);
     engine.rootContext()->setContextProperty("backend",&backend);engine.rootContext()->setContextProperty("deployer",&deployer);engine.rootContext()->setContextProperty("oauth",&oauth);engine.rootContext()->setContextProperty("macOSPort",true);
     QObject::connect(&oauth,&OAuthService::authSucceeded,&backend,&Backend::refreshStatus);QObject::connect(&oauth,&OAuthService::authSucceeded,&backend,&Backend::saveConfig);
     QObject::connect(&deployer,&Deployer::checkCompleted,&backend,&Backend::refreshStatus);
@@ -22,7 +26,11 @@ int main(int argc,char**argv){
             delete object;
         }
         qInfo() << "All macOS QML pages loaded successfully";
-        return 0;
+        engine.load(QUrl("qrc:/CloudRedirect/qml/Main.qml"));
+        if (engine.rootObjects().isEmpty()) return 1;
+        appearance.attach(qobject_cast<QQuickWindow*>(engine.rootObjects().first()));
+        QTimer::singleShot(500, &app, &QGuiApplication::quit);
+        return app.exec();
     }
-    engine.load(QUrl("qrc:/CloudRedirect/qml/Main.qml"));if(engine.rootObjects().isEmpty())return 1;return app.exec();
+    engine.load(QUrl("qrc:/CloudRedirect/qml/Main.qml"));if(engine.rootObjects().isEmpty())return 1;appearance.attach(qobject_cast<QQuickWindow*>(engine.rootObjects().first()));return app.exec();
 }
