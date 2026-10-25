@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Templates as T
 import "../components"
 
 Page {
@@ -204,75 +205,67 @@ Page {
         }
     }
 
-    // Orphan results dialog
-    Dialog {
+    T.Popup {
         id: orphanDialog
-        title: "Orphan Scan Results"
-        modal: true
-        standardButtons: Dialog.NoButton
+        parent: Overlay.overlay
         anchors.centerIn: parent
-        width: Math.min(parent.width - 80, 480)
-
+        modal: true
+        padding: 24
+        width: Math.min(parent.width - 48, 420)
+        implicitHeight: contentItem.implicitHeight + topPadding + bottomPadding
         property var results: []
-
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 8
-
+        background: Rectangle {
+            radius: 16
+            color: palette.base
+            border.color: Qt.alpha(palette.text, 0.15)
+        }
+        contentItem: ColumnLayout {
+            spacing: 16
             RowLayout {
-                Layout.fillWidth: true
-                spacing: 12
+                spacing: 14
                 Image {
-                    source: "image://symbols/" + (orphanDialog.results.length === 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill") + "/" + palette.highlight.toString().substring(1)
-                    sourceSize: Qt.size(48, 48)
-                    Layout.preferredWidth: 28
-                    Layout.preferredHeight: 28
+                    source: "image://symbols/" + (orphanDialog.results.length === 0 ? "checkmark.circle.fill" : "externaldrive.badge.exclamationmark") + "/afbfa4"
+                    sourceSize: Qt.size(72, 72)
+                    Layout.preferredWidth: 36
+                    Layout.preferredHeight: 36
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
+                    spacing: 5
                     Label {
                         text: orphanDialog.results.length === 0 ? "Storage is clean" : "Orphan blobs found"
-                        font.pixelSize: 16
+                        font.pixelSize: 17
                         font.weight: Font.DemiBold
                         Layout.fillWidth: true
                     }
                     Label {
-                        text: orphanDialog.results.length === 0 ? "No orphan blobs were found." : orphanDialog.results.length + " app(s) have orphan blobs:"
+                        text: orphanDialog.results.length === 0 ? "No unused cloud blobs were found." : orphanDialog.results.length + " games have unused blobs."
                         wrapMode: Text.WordWrap
-                        color: palette.text
                         Layout.fillWidth: true
                     }
                 }
             }
-
-            Button {
+            ListView {
+                visible: orphanDialog.results.length > 0
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(orphanDialog.results.length * 54, 216)
+                clip: true
+                model: orphanDialog.results
+                delegate: Column {
+                    required property var modelData
+                    width: ListView.view.width
+                    height: 54
+                    spacing: 4
+                    Label { text: modelData.name; font.weight: Font.Medium }
+                    Label { text: modelData.orphanCount + " files · " + modelData.orphanSizeFormatted; color: palette.placeholderText }
+                }
+            }
+            AccentButton {
                 text: "Done"
                 Layout.alignment: Qt.AlignRight
-                Accessible.name: "Done"
-                highlighted: true
+                Layout.preferredWidth: 90
+                Layout.preferredHeight: 28
                 onClicked: orphanDialog.close()
-            }
-
-            Repeater {
-                model: orphanDialog.results
-
-                SettingsGroup {
-                    Layout.fillWidth: true
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        spacing: 2
-
-                        Label {
-                            text: modelData.name + " (" + modelData.appId + ")"
-                            font.bold: true
-                        }
-                        Label {
-                            text: modelData.orphanCount + " orphan file(s), " + modelData.orphanSizeFormatted
-                            opacity: 0.7
-                        }
-                    }
-                }
             }
         }
     }
@@ -411,10 +404,12 @@ Page {
                             ToolTip.text: "Delete saves"
                             icon.name: "user-trash"
                             icon.source: "image://symbols/trash/8e8e93"
+                            icon.width: 22
+                            icon.height: 22
                             display: AbstractButton.IconOnly
                             flat: true
-                            implicitWidth: 36
-                            implicitHeight: 36
+                            implicitWidth: 40
+                            implicitHeight: 40
                             onClicked: {
                                 deleteDialog.targetApp = modelData
                                 deleteDialog.open()

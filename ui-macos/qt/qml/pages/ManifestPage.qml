@@ -32,12 +32,12 @@ Page {
                 width: parent.width; spacing: 16
                 SettingRow {
                     Layout.fillWidth: true; title: "Pin depot versions"; detail: "Apply manifest IDs when Steam resolves game depots."
-                    Switch { Accessible.name: "Pin depot versions"; checked: page.pinning; onToggled: {page.pinning=checked;persist()} }
+                    AccentSwitch { Accessible.name: "Pin depot versions"; checked: page.pinning; onToggled: {page.pinning=checked;persist()} }
                 }
                 Rectangle { Layout.fillWidth: true; height: 1; color: Qt.alpha(palette.text,0.08) }
                 SettingRow {
                     Layout.fillWidth: true; title: "Selected games only"; detail: "Ignore manifest pins from unselected Lua scripts."
-                    Switch { Accessible.name: "Selected games only"; checked: page.autoComment; onToggled: {page.autoComment=checked;persist()} }
+                    AccentSwitch { Accessible.name: "Selected games only"; checked: page.autoComment; onToggled: {page.autoComment=checked;persist()} }
                 }
             }
         }

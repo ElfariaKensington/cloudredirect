@@ -37,7 +37,8 @@ void MacAppearance::attach(QWindow* window) {
     NSString* iconPath=[NSBundle.mainBundle pathForResource:@"CloudRedirect" ofType:@"icns"];
     NSImage* icon=iconPath ? [[NSImage alloc] initWithContentsOfFile:iconPath] : nil;
     if(icon)NSApp.applicationIconImage=icon;
-    native.titleVisibility=NSWindowTitleVisible;
+    native.styleMask|=NSWindowStyleMaskFullSizeContentView;
+    native.titleVisibility=NSWindowTitleHidden;
     native.titlebarAppearsTransparent=YES;
     native.toolbarStyle=NSWindowToolbarStyleUnified;
     native.backgroundColor=NSColor.windowBackgroundColor;
@@ -45,17 +46,21 @@ void MacAppearance::attach(QWindow* window) {
     CRToolbar* delegate=[CRToolbar new];delegate.owner=this;
     toolbar.delegate=delegate;toolbar.displayMode=NSToolbarDisplayModeIconOnly;
     toolbar.allowsUserCustomization=NO;native.toolbar=toolbar;
+    titlebarInset_=MAX(0,native.frame.size.height-native.contentLayoutRect.size.height);
     // NSToolbar does not retain its delegate. Keep it alive with the QObject.
     void* retained=(__bridge_retained void*)delegate;
     connect(this,&QObject::destroyed,[retained]{CFRelease(retained);});
-    CGFloat titlebarHeight=MAX(0,native.frame.size.height-native.contentLayoutRect.size.height);
-    NSVisualEffectView* effect=[[NSVisualEffectView alloc] initWithFrame:NSMakeRect(view.frame.origin.x,view.frame.origin.y,224,view.frame.size.height+titlebarHeight)];
+    NSView* windowFrame=native.contentView.superview;
+    NSRect contentFrame=[native.contentView convertRect:native.contentView.bounds toView:windowFrame];
+    NSRect parentBounds=windowFrame.bounds;
+    NSVisualEffectView* effect=[[NSVisualEffectView alloc] initWithFrame:NSMakeRect(NSMinX(contentFrame),NSMinY(parentBounds),224,NSHeight(parentBounds))];
     effect.material=NSVisualEffectMaterialSidebar;
     effect.blendingMode=NSVisualEffectBlendingModeBehindWindow;
     effect.state=NSVisualEffectStateFollowsWindowActiveState;
     effect.autoresizingMask=NSViewHeightSizable;
-    [view.superview addSubview:effect positioned:NSWindowBelow relativeTo:view];
+    [windowFrame addSubview:effect positioned:NSWindowBelow relativeTo:native.contentView];
     effect_=(__bridge void*)effect;
+    emit layoutMetricsChanged();
 }
 void MacAppearance::setSidebarWidth(int width) {
     NSVisualEffectView* effect=(__bridge NSVisualEffectView*)effect_;

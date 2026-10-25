@@ -19,12 +19,13 @@ codesign --force --sign - "$APP/Contents/Resources/runtime/cloud760_tool"
 cp "$ROOT/build-macos/cloud_redirect.dylib" "$ROOT/build-macos/cloud_redirect_cli" "$APP/Contents/Resources/runtime/"
 ICONSET="$ROOT/build-macos/CloudRedirect.iconset"
 mkdir -p "$ICONSET"
+ICON_SOURCE="$ROOT/ui-macos/assets/CloudRedirect-icon.png"
 for size in 16 32 128 256 512; do
-    cp "$ROOT/flatpak/icons/${size}x${size}/apps/cloudredirect.png" "$ICONSET/icon_${size}x${size}.png"
+    sips -z "$size" "$size" "$ICON_SOURCE" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
 done
-for size in 16 32 128 256; do
+for size in 16 32 128 256 512; do
     double=$((size * 2))
-    cp "$ROOT/flatpak/icons/${double}x${double}/apps/cloudredirect.png" "$ICONSET/icon_${size}x${size}@2x.png"
+    sips -z "$double" "$double" "$ICON_SOURCE" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/CloudRedirect.icns"
 cp "$ROOT/LICENSE" "$APP/Contents/Resources/LICENSE"

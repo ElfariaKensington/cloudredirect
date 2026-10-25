@@ -391,7 +391,7 @@ Page {
 
                 Item { Layout.fillWidth: true }
 
-                Button {
+                AccentButton {
                     text: "Start Migration"
                     highlighted: true
                     enabled: !page.scanning && page.sourceApps.length > 0 && page.srcKey() !== page.dstKey()
@@ -547,7 +547,7 @@ Page {
                 onClicked: page.beginMigration()
             }
 
-            Button {
+            AccentButton {
                 text: "Back"
                 highlighted: true
                 onClicked: {

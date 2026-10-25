@@ -13,8 +13,8 @@ ApplicationWindow {
     minimumHeight: 560
     visible: true
     color: "transparent"
-    palette.highlight: "#39865b"
-    palette.highlightedText: "#ffffff"
+    palette.highlight: "#afbfa4"
+    palette.highlightedText: "#20251d"
     font.pixelSize: 13
     property int currentPage: 0
     property bool sidebarVisible: true
@@ -29,6 +29,11 @@ ApplicationWindow {
         {name: "Manifest Pins", symbol: "pin", section: ""},
         {name: "Cloud Files", symbol: "externaldrive", section: ""}
     ]
+    function sectionForPage(pageIndex) {
+        for (var i = pageIndex; i >= 0; --i)
+            if (destinations[i].section !== "") return destinations[i].section
+        return ""
+    }
     title: destinations[currentPage].name
     onSidebarVisibleChanged: nativeAppearance.setSidebarWidth(sidebarVisible ? 224 : 0)
     function refresh() {
@@ -86,16 +91,7 @@ ApplicationWindow {
                         required property int index
                         Layout.fillWidth: true
                         spacing: 4
-                        Label {
-                            visible: modelData.section !== ""
-                            text: modelData.section
-                            font.pixelSize: 11
-                            font.weight: Font.DemiBold
-                            color: palette.placeholderText
-                            leftPadding: 10
-                            topPadding: index === 0 ? 6 : 20
-                            bottomPadding: 3
-                        }
+                        Item { Layout.fillWidth: true; implicitHeight: modelData.section !== "" && index !== 0 ? 16 : 2 }
                         T.ItemDelegate {
                             hoverEnabled: true
                             activeFocusOnTab: true
@@ -110,11 +106,11 @@ ApplicationWindow {
                             onClicked: root.currentPage = index
                             background: Rectangle {
                                 radius: 7
-                                color: row.highlighted ? Qt.alpha(palette.highlight, 0.18) : row.hovered ? Qt.alpha(palette.text, 0.055) : "transparent"
+                                color: row.highlighted ? palette.highlight : row.hovered ? Qt.alpha(palette.text, 0.055) : "transparent"
                             }
                             contentItem: RowLayout {
                                 spacing: 10
-                                Image { source: "image://symbols/"+modelData.symbol+"/"+palette.highlight.toString().substring(1); sourceSize: Qt.size(36,36); Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
+                                Image { source: "image://symbols/"+modelData.symbol+"/"+(row.highlighted ? "20251d" : palette.highlight.toString().substring(1)); sourceSize: Qt.size(36,36); Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
                                 Label { text: modelData.name; font.weight: row.highlighted ? Font.DemiBold : Font.Normal; Layout.fillWidth: true }
                             }
                         }
@@ -130,19 +126,34 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             color: palette.window
-            StackLayout {
-                id: pages
+            ColumnLayout {
                 anchors.fill: parent
-                currentIndex: root.currentPage
-                DashboardPage { onNavigate: (destination) => root.currentPage = destination }
-                AppsPage {}
-                BackupsPage {}
-                CloudProviderPage {}
-                SetupPage {}
-                StatsPage {}
-                MigrationPage {}
-                ManifestPage {}
-                SteamCloudPage {}
+                spacing: 0
+                Label {
+                    text: root.sectionForPage(root.currentPage)
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                    color: palette.placeholderText
+                    leftPadding: 28
+                    topPadding: 5
+                    bottomPadding: 3
+                    Layout.fillWidth: true
+                }
+                StackLayout {
+                    id: pages
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    currentIndex: root.currentPage
+                    DashboardPage { onNavigate: (destination) => root.currentPage = destination }
+                    AppsPage {}
+                    BackupsPage {}
+                    CloudProviderPage {}
+                    SetupPage {}
+                    StatsPage {}
+                    MigrationPage {}
+                    ManifestPage {}
+                    SteamCloudPage {}
+                }
             }
         }
     }

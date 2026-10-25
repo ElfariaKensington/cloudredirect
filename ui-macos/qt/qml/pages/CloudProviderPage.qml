@@ -595,9 +595,10 @@ Page {
 
                 Item { Layout.fillWidth: true }
 
-                Button {
+                AccentButton {
                     text: saving ? "Testing connection..." : "Save"
                     highlighted: true
+                    Accessible.name: saving ? "Testing connection" : "Save cloud provider settings"
                     enabled: !saving
                     onClicked: {
                         if (!backend) return

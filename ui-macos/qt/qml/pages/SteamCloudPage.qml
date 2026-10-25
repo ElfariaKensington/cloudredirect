@@ -99,8 +99,8 @@ Page {
                         }
                         background: Rectangle {
                             radius: 6
-                            color: fileRow.highlighted ? Qt.alpha(palette.highlight, 0.24) : fileRow.hovered ? Qt.alpha(palette.text, 0.06) : "transparent"
-                            border.color: fileRow.highlighted ? Qt.alpha(palette.highlight, 0.7) : "transparent"
+                            color: fileRow.highlighted ? palette.highlight : fileRow.hovered ? Qt.alpha(palette.text, 0.06) : "transparent"
+                            border.color: fileRow.highlighted ? Qt.darker(palette.highlight, 1.16) : "transparent"
                         }
                         onClicked: {var copy=Object.assign({},page.selected);copy[modelData.name]=!copy[modelData.name];page.selected=copy}
                     }

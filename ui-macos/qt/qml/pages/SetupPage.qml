@@ -118,7 +118,7 @@ Page {
                     SettingRow {
                         Layout.fillWidth: true; title: "CloudRedirect runtime"
                         detail: !deployer.alreadyDeployed ? "Install to enable syncing through Steam." : deployer.updateAvailable ? "An updated runtime is ready to install." : "Installed and up to date."
-                        Button { text: deployer.alreadyDeployed ? "Update" : "Install…"; visible: !deployer.alreadyDeployed || deployer.updateAvailable; enabled: deployer.slssteamInstalled; highlighted: true; onClicked: deployer.alreadyDeployed ? deployer.update() : deployer.deploy() }
+                        AccentButton { text: deployer.alreadyDeployed ? "Update" : "Install…"; visible: !deployer.alreadyDeployed || deployer.updateAvailable; enabled: deployer.slssteamInstalled; highlighted: true; onClicked: deployer.alreadyDeployed ? deployer.update() : deployer.deploy() }
                         Button { text: "Remove…"; visible: deployer.alreadyDeployed; onClicked: deployer.undeploy() }
                     }
                 }
@@ -131,7 +131,7 @@ Page {
                     width: parent.width; spacing: 16
                     SettingRow {
                         Layout.fillWidth: true; title: "Cloud save redirection"; detail: "Use CloudRedirect for your managed games."
-                        Switch { id: nativeEnabled; Accessible.name: "Cloud save redirection"; checked: backend.redirectEnabled() }
+                        AccentSwitch { id: nativeEnabled; Accessible.name: "Cloud save redirection"; checked: backend.redirectEnabled() }
                     }
                     Rectangle { Layout.fillWidth: true; height: 1; color: Qt.alpha(palette.text,0.08) }
                     Label { text: "Additional game IDs"; font.weight: Font.Medium }
@@ -140,7 +140,7 @@ Page {
                     RowLayout {
                         Layout.fillWidth: true
                         Label { id: nativeResult; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: palette.placeholderText; font.pixelSize: 12 }
-                        Button { text: "Save Changes"; onClicked: nativeResult.text = backend.saveManagedIDs(nativeGameIDs.text,nativeEnabled.checked) }
+                        AccentButton { text: "Save Changes"; onClicked: nativeResult.text = backend.saveManagedIDs(nativeGameIDs.text,nativeEnabled.checked) }
                     }
                 }
             }

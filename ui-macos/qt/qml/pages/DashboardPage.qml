@@ -91,7 +91,7 @@ Page {
                         width: parent.width
                         title: "Launch notifications"
                         detail: "Notify when CloudRedirect loads in Steam."
-                        Switch { Accessible.name: "Launch notifications"; checked: backend.notificationsEnabled; onToggled: backend.notificationsEnabled = checked }
+                        AccentSwitch { Accessible.name: "Launch notifications"; checked: backend.notificationsEnabled; onToggled: backend.notificationsEnabled = checked }
                     }
                 }
                 RowLayout {
