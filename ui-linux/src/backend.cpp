@@ -1,7 +1,14 @@
+#include <QtGlobal>
+#ifdef Q_OS_MACOS
+#include "credentials.h"
+#endif
 #include "backend.h"
 #include "utils.h"
 #include <QDir>
 #include <QFile>
+#ifndef Q_OS_MACOS
+using CredentialFile=QFile;
+#endif
 #include <QFileInfo>
 #include <QDirIterator>
 #include <QJsonDocument>
@@ -101,6 +108,9 @@ void Backend::detectSteamPath()
 {
     QString home = realHomePath();
 
+#ifdef Q_OS_MACOS
+    m_steamPath=qEnvironmentVariable("CLOUDREDIRECT_STEAM_HOME",home+"/Library/Application Support/Steam");
+#else
     QString path = home + "/.local/share/Steam";
     if (QDir(path).exists()) {
         m_steamPath = path;
@@ -112,10 +122,16 @@ void Backend::detectSteamPath()
             m_steamPath = home + "/.steam/steam";
     }
 
+#endif
     m_storagePath = crConfigDir() + "/storage";
 
     m_deployed = false;
-    QString crPath = crDataDir() + "/cloud_redirect.so";
+    QString crPath =
+#ifdef Q_OS_MACOS
+        "/Applications/Steam.app/Contents/MacOS/cloud_redirect.dylib";
+#else
+        crDataDir() + "/cloud_redirect.so";
+#endif
     m_deployed = QFile::exists(crPath);
 
     // Parse account ID from loginusers.vdf (MostRecent > AutoLogin > Timestamp)
@@ -320,7 +336,7 @@ void Backend::loadConfig()
 
     QJsonObject obj = doc.object();
     m_providerName = obj.value("provider").toString("local");
-    m_syncFolderPath = obj.value("sync_folder_path").toString();
+    m_syncFolderPath = obj.value("sync_folder_path").toString(obj.value("sync_path").toString());
     m_notificationsEnabled = obj.value("notifications_enabled").toBool(true);
     m_statsSyncEnabled = obj.value("stats_sync_enabled").toBool(true);
     m_syncAchievements = obj.value("sync_achievements").toBool(false);
@@ -332,7 +348,7 @@ void Backend::loadConfig()
     m_providerAuthenticated = false;
     if (m_providerName == "gdrive" || m_providerName == "onedrive") {
         QString tokenPath = defaultTokenPath(m_providerName);
-        if (QFile::exists(tokenPath)) {
+        if (CredentialFile::exists(tokenPath)) {
             m_providerAuthenticated = true;
         }
     } else if (m_providerName == "r2") {
@@ -396,6 +412,9 @@ void Backend::saveConfig()
     
     obj["provider"] = m_providerName;
     obj["sync_folder_path"] = m_syncFolderPath;
+#ifdef Q_OS_MACOS
+    obj["sync_path"] = m_syncFolderPath;
+#endif
     obj["notifications_enabled"] = m_notificationsEnabled;
     obj["stats_sync_enabled"] = m_statsSyncEnabled;
     obj["sync_achievements"] = m_syncAchievements;
@@ -846,7 +865,7 @@ QString Backend::readAccessToken() const
         return QString();
     }
     
-    QFile f(tokenPath);
+    CredentialFile f(tokenPath);
     if (!f.open(QIODevice::ReadOnly)) return QString();
     
     QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
@@ -910,6 +929,9 @@ QString Backend::readAccessToken() const
                 // Update token file atomically
                 obj["access_token"] = newToken;
                 obj["expires_at"] = newExpiry;
+                #ifdef Q_OS_MACOS
+                if(!writeCredential(tokenPath,QJsonDocument(obj).toJson())){reply->deleteLater();return {};}
+#else
                 QString tempPath = tokenPath + ".tmp";
                 QFile wf(tempPath);
                 if (wf.open(QIODevice::WriteOnly)) {
@@ -923,6 +945,7 @@ QString Backend::readAccessToken() const
                         }
                     }
                 }
+#endif
                 reply->deleteLater();
                 return newToken;
             }
@@ -1635,7 +1658,7 @@ bool Backend::isProviderAuthenticated(const QString &provider) const
         return s3CredentialsValid(s3CredentialPath());
 
     QString tokenPath = defaultTokenPath(provider);
-    return QFile::exists(tokenPath);
+    return CredentialFile::exists(tokenPath);
 }
 
 QString Backend::r2CredentialPath() const
@@ -1648,7 +1671,7 @@ QString Backend::r2CredentialPath() const
 QVariantMap Backend::getR2Credentials() const
 {
     QVariantMap out;
-    QFile f(r2CredentialPath());
+    CredentialFile f(r2CredentialPath());
     if (!f.open(QIODevice::ReadOnly))
         return out;
     QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
@@ -1689,7 +1712,7 @@ bool Backend::saveR2Credentials(const QString &accountId,
     // error (nothing to fall back to).
     const QString credPath = r2CredentialPath();
     if (secret.isEmpty()) {
-        QFile f(credPath);
+        CredentialFile f(credPath);
         if (f.open(QIODevice::ReadOnly)) {
             QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
             f.close();
@@ -1718,6 +1741,9 @@ bool Backend::saveR2Credentials(const QString &accountId,
     // Atomic write with 0600 perms (credentials are sensitive), mirroring the
     // OAuth token writer in oauthservice.cpp.
     const QByteArray data = QJsonDocument(o).toJson();
+#ifdef Q_OS_MACOS
+    if(!writeCredential(credPath,data))return false;
+#else
     const QString tempPath = credPath + ".tmp";
     int fd = open(tempPath.toUtf8().constData(),
                   O_WRONLY | O_CREAT | O_TRUNC, 0600);
@@ -1744,6 +1770,7 @@ bool Backend::saveR2Credentials(const QString &accountId,
         return false;
     }
 
+#endif
     // Register the credential path in config so the native side resolves it even
     // if the convention filename ever changes. saveConfig() preserves unknown
     // keys, so read-modify-write token_paths here directly.
@@ -1790,7 +1817,7 @@ QString Backend::s3CredentialPath() const
 QVariantMap Backend::getS3Credentials() const
 {
     QVariantMap out;
-    QFile f(s3CredentialPath());
+    CredentialFile f(s3CredentialPath());
     if (!f.open(QIODevice::ReadOnly))
         return out;
     QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
@@ -1839,7 +1866,7 @@ bool Backend::saveS3Credentials(const QString &accessKeyId,
     // error (nothing to fall back to).
     const QString credPath = s3CredentialPath();
     if (secret.isEmpty()) {
-        QFile f(credPath);
+        CredentialFile f(credPath);
         if (f.open(QIODevice::ReadOnly)) {
             QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
             f.close();
@@ -1876,6 +1903,9 @@ bool Backend::saveS3Credentials(const QString &accessKeyId,
     // Atomic write with 0600 perms (credentials are sensitive), mirroring the
     // R2 credential writer above.
     const QByteArray data = QJsonDocument(o).toJson();
+#ifdef Q_OS_MACOS
+    if(!writeCredential(credPath,data))return false;
+#else
     const QString tempPath = credPath + ".tmp";
     int fd = open(tempPath.toUtf8().constData(),
                   O_WRONLY | O_CREAT | O_TRUNC, 0600);
@@ -1902,6 +1932,7 @@ bool Backend::saveS3Credentials(const QString &accessKeyId,
         return false;
     }
 
+#endif
     // Register the credential path in config so the native side resolves it even
     // if the convention filename ever changes.
     const QString configPath = crConfigDir() + "/config.json";
@@ -2151,6 +2182,9 @@ QVariantMap Backend::checkProviderCredentials(const QString &provider) const
         out["message"] = "Cannot determine credential path";
         return out;
     }
+#ifdef Q_OS_MACOS
+    if(readCredential(tokenPath).isEmpty()){out["ok"]=false;out["message"]="Credentials unavailable in Keychain";return out;}
+#else
     QFileInfo fi(tokenPath);
     if (!fi.exists()) {
         out["ok"] = false;
@@ -2162,6 +2196,7 @@ QVariantMap Backend::checkProviderCredentials(const QString &provider) const
         out["message"] = "Credential file is empty: " + fi.fileName();
         return out;
     }
+#endif
     out["ok"] = true;
     out["message"] = "Credentials found";
     return out;
@@ -2171,6 +2206,10 @@ QVariantMap Backend::checkProviderCredentials(const QString &provider) const
 // binary run on the host via flatpak-spawn, so resolve the host path.
 QString Backend::cliExecutablePath() const
 {
+#ifdef Q_OS_MACOS
+    return nativeCli();
+#endif
+
     QString deployed = crDataDir() + "/cloud_redirect_cli";
     if (QFile::exists(deployed))
         return deployed;

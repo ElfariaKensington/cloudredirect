@@ -183,6 +183,8 @@ ApplicationWindow {
             TabButton { text: "Setup";          width: implicitWidth }
             TabButton { text: "Stats Sync";     width: implicitWidth }
             TabButton { text: "Migration";      width: implicitWidth }
+            TabButton { text: "Manifest Pins"; visible: typeof macOSPort !== "undefined"; width: visible ? implicitWidth : 0 }
+            TabButton { text: "Steam Cloud"; visible: typeof macOSPort !== "undefined"; width: visible ? implicitWidth : 0 }
         }
 
         StackLayout {
@@ -197,6 +199,8 @@ ApplicationWindow {
             SetupPage {}
             StatsPage {}
             MigrationPage {}
+            Loader { source: typeof macOSPort !== "undefined" ? "pages/ManifestPage.qml" : "" }
+            Loader { source: typeof macOSPort !== "undefined" ? "pages/SteamCloudPage.qml" : "" }
         }
     }
 }

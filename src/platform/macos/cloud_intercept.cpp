@@ -2,6 +2,7 @@
 #include "json.h"
 #include "log.h"
 #include "xdg.h"
+#include "lua_namespace.h"
 #include <atomic>
 #include <fstream>
 #include <mutex>
@@ -11,7 +12,11 @@ static std::mutex g_mutex;
 static std::string g_steamPath;
 static std::atomic<uint32_t> g_accountId{0};
 static std::unordered_set<uint32_t> g_apps;
-static std::string DetectSteamPath() { return XdgHome()+"/Library/Application Support/Steam/"; }
+static std::string DetectSteamPath() {
+    const char* path=getenv("CLOUDREDIRECT_STEAM_HOME");
+    std::string result=path&&path[0]=='/'?path:XdgHome()+"/Library/Application Support/Steam/";
+    if(!result.empty()&&result.back()!='/')result+='/';return result;
+}
 static uint32_t LoadAccountIdFromLoginUsers() {
     std::string steamPath = DetectSteamPath();
     std::string vdfPath = steamPath + "config/loginusers.vdf";
@@ -124,6 +129,7 @@ void InitLinux() { // Common API name retained; implementation is native macOS.
     std::string text((std::istreambuf_iterator<char>(f)),{});
     auto cfg=Json::Parse(text);
     g_apps.clear();
+    for(auto id:LuaNamespace::Discover(g_steamPath+"config/stplug-in"))g_apps.insert(id);
     for(auto& app:cfg["apps"].arrVal) {
         auto id=app.integer(); if(id>0 && id<=0xffffff)g_apps.insert((uint32_t)id);
     }

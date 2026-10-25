@@ -15,6 +15,11 @@
 #include "log.h"
 #include "xdg.h"
 #include "native_profile.h"
+#include "native_stats.h"
+#include "native_lua.h"
+#include "live_playtime.h"
+#include "stats_handlers.h"
+#include "stats_hooks.h"
 
 #include <cstring>
 #include <climits>
@@ -40,6 +45,7 @@ static std::atomic<NotificationDirect_t> g_origNotificationDirect{nullptr};
 static std::atomic<SyncSend2_t>          g_origSyncSend2{nullptr};
 
 static std::atomic<bool> g_initialized{false};
+static std::atomic<bool> g_redirectEnabled{false};
 static std::atomic<bool> g_shuttingDown{false};
 static std::atomic<int>  g_hookRefCount{0};
 
@@ -145,9 +151,12 @@ static void EnsureInitialized() {
             configFile.close();
             auto cfg = Json::Parse(configStr);
             std::string providerName = cfg["provider"].str();
+            g_redirectEnabled=cfg["enabled"].boolean();
+            MetadataSync::syncLuas=cfg["sync_luas"].boolean();
 
-            MetadataSync::syncAchievements=false;
-            MetadataSync::syncPlaytime=false;
+            const bool statsEnabled=!cfg.has("stats_sync_enabled")||cfg["stats_sync_enabled"].boolean();
+            MetadataSync::syncAchievements=statsEnabled&&cfg["sync_achievements"].boolean();
+            MetadataSync::syncPlaytime=statsEnabled&&cfg["sync_playtime"].boolean();
             if (!providerName.empty() && providerName != "local") {
                 provider = CreateCloudProvider(providerName);
                 if (provider) {
@@ -197,6 +206,11 @@ static void EnsureInitialized() {
         PendingOpsJournal::Init(storageRoot);
         if(!HttpServer::Start(storageRoot, CloudIntercept::GetAccountId())){g_initFailed=true;return;}
 
+        if(!NativeStats::Initialize(cloudRedirectRoot,SerializeMessage,ParseIntoMessage)){
+            MetadataSync::syncAchievements=false;MetadataSync::syncPlaytime=false;
+            LOG("[Stats] Native initialization failed; cloud saves remain available");
+        }
+        NativeLua::Start();
         g_initialized.store(true, std::memory_order_release);
 
         LOG("[macOS] Storage initialized: root=%s, accountId=%u, namespaceApps=%zu",
@@ -244,7 +258,16 @@ extern "C" int hook_BYieldingSend(void* pThis, const char* methodName, void* req
     }
     if (!origFn) return 0;
 
-    if (!IsCloudRpc(methodName) || !g_serializeToArray || !g_parseFromArray)
+    if(MetadataSync::PlaytimeEnabled())LivePlaytime::DrainOnNetThread();
+    if(methodName&&strcmp(methodName,StatsHandlers::RPC_GET_USER_STATS)==0&&MetadataSync::AchievementsEnabled()){
+        EnsureInitialized();if(StatsHooks::TryHandleGetUserStats(methodName,request,response,flags))return 1;
+        return origFn(pThis,methodName,request,response,flags);
+    }
+    if(methodName&&strcmp(methodName,StatsHandlers::RPC_GET_LAST_PLAYED)==0&&MetadataSync::PlaytimeEnabled()){
+        EnsureInitialized();int result=origFn(pThis,methodName,request,response,flags);
+        if(result)StatsHooks::MergeLastPlayedTimes(methodName,request,response);return result;
+    }
+    if (!g_redirectEnabled || !IsCloudRpc(methodName) || !g_serializeToArray || !g_parseFromArray)
         return origFn(pThis, methodName, request, response, flags);
 
     EnsureInitialized();
@@ -390,7 +413,7 @@ extern "C" int hook_NotificationDirect(void* pThis, const char* methodName, void
     if (!origFn) return 0;
 
     // Only intercept Cloud.* notifications
-    if (!IsCloudRpc(methodName)) {
+    if (!g_redirectEnabled || !IsCloudRpc(methodName)) {
         return origFn(pThis, methodName, body, flags);
     }
 
@@ -464,7 +487,7 @@ extern "C" int hook_SyncSend2(void* pThis, const char* methodName, void* buf, un
     }
     if (!origFn) return 0;
 
-    if (!IsCloudRpc(methodName))
+    if (!g_redirectEnabled || !IsCloudRpc(methodName))
         return origFn(pThis, methodName, buf, bufLen, response, flags);
 
     if (!buf || bufLen == 0)
@@ -540,7 +563,7 @@ extern "C" bool hook_IsCloudEnabledForApp(void* pThis, unsigned int appId)
         return fn ? fn(pThis, appId) : true;
     }
     CrashContextScope crashContext("IsCloudEnabledForApp:entry", "IsCloudEnabledForApp", appId);
-    if (CloudIntercept::IsNamespaceApp(appId)) {
+    if (g_redirectEnabled&&CloudIntercept::IsNamespaceApp(appId)) {
         LOG("[Hook] IsCloudEnabledForApp(%u) -> true (namespace app)", appId);
         return true;
     }
@@ -554,5 +577,7 @@ extern "C" bool hook_IsCloudEnabledForApp(void* pThis, unsigned int appId)
 
 void CloudHooks::BeginShutdown() {
     g_shuttingDown.store(true,std::memory_order_release);
+    NativeLua::Shutdown();
+    NativeStats::Shutdown();
     for(int i=0;i<300&&g_hookRefCount.load(std::memory_order_acquire)>0;++i)usleep(10000);
 }

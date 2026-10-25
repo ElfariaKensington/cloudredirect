@@ -36,6 +36,9 @@ static const char* ONEDRIVE_TOKEN_URL = "https://login.microsoftonline.com/commo
 static const char* ONEDRIVE_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
 static const char* ONEDRIVE_SCOPE = "Files.ReadWrite offline_access";
 
+#ifdef Q_OS_MACOS
+#include "credentials.h"
+#else
 // ── libsecret runtime binding (optional, no compile-time dependency) ────
 
 typedef void* GCancellable;
@@ -134,6 +137,8 @@ static bool parseTokenPath(const QString& path, QString& provider, QString& acco
     account = basename.mid(sep + 1);
     return !provider.isEmpty() && !account.isEmpty();
 }
+
+#endif
 
 OAuthService::OAuthService(QObject *parent) : QObject(parent) {}
 
@@ -425,6 +430,9 @@ void OAuthService::exchangeCodeForTokens(const QString &code, int retryCount)
         QJsonDocument tokenDoc(tokenObj);
         QByteArray tokenJson = tokenDoc.toJson(QJsonDocument::Indented);
 
+#ifdef Q_OS_MACOS
+        if(!writeCredential(m_tokenPath,tokenJson)){emit authFailed(m_provider,"Could not store credentials in Keychain");cancel();return;}
+#else
         QString provider, account;
         if (parseTokenPath(m_tokenPath, provider, account)) {
             storeTokenInSecretService(provider, account, QString::fromUtf8(tokenJson));
@@ -465,6 +473,8 @@ void OAuthService::exchangeCodeForTokens(const QString &code, int retryCount)
                 return;
             }
         }
+
+#endif
 
         emit statusMessage(QString("Tokens saved. Access token expires in %1s (auto-refresh enabled).").arg(expiresIn));
         emit authSucceeded(m_provider);

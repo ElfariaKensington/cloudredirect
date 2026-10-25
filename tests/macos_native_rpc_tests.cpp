@@ -20,12 +20,12 @@ int main(){
     MacProfile::Profile p;std::string error;
     if(!MacProfile::Resolve(p,error,true)||!MacProfile::TestProtobuf(p,error)){fprintf(stderr,"%s\n",error.c_str());fflush(stderr);_Exit(1);}
     char name[]="/tmp/cr-native-rpc-XXXXXX";char* dir=mkdtemp(name);if(!dir)_Exit(1);
-    std::string root=dir;setenv("CLOUDREDIRECT_CONFIG_HOME",dir,1);
+    std::string root=dir;setenv("CLOUDREDIRECT_CONFIG_HOME",dir,1);setenv("CLOUDREDIRECT_STEAM_HOME",(root+"/steam").c_str(),1);
     std::filesystem::create_directories(root+"/CloudRedirect");
-    std::ofstream(root+"/CloudRedirect/config.json")<<"{\"provider\":\"folder\",\"sync_path\":\""<<root<<"/remote\",\"apps\":[620]}";
+    std::ofstream(root+"/CloudRedirect/config.json")<<"{\"enabled\":true,\"provider\":\"folder\",\"sync_path\":\""<<root<<"/remote\",\"apps\":[620]}";
     CloudIntercept::InitLinux();CloudIntercept::SetAccountId(4242);CloudIntercept::SetSteamPath(root+"/steam");
     CloudHooks::SetOriginals((void*)Original,nullptr,(void*)RawOriginal);
-    bool ok=CloudHooks::ResolveProtobufHelpers(nullptr,0);
+    bool ok=CloudHooks::ResolveProtobufHelpers(nullptr,0) && CloudHooks::InitializeStorage();
     auto** reqvt=p.FindVtable("35CCloud_GetAppFileChangelist_Request");
     auto** resvt=p.FindVtable("36CCloud_GetAppFileChangelist_Response");
     ok=ok&&reqvt&&resvt;

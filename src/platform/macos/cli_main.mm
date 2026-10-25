@@ -3,18 +3,37 @@
 #include "xdg.h"
 #include "json.h"
 #include "native_profile.h"
+#include "native_kv.h"
+#include "live_playtime.h"
 #include "cloud_provider.h"
 #include <fstream>
 #include <unistd.h>
+#include <Security/Security.h>
 #include <iostream>
 #include <iterator>
 #include <string>
 int main(int argc,char**argv) {
+    if(argc==2 && std::string(argv[1])=="purge-credentials") {
+        const void* keys[]={kSecClass,kSecAttrService};const void* values[]={kSecClassGenericPassword,CFSTR("com.elfaria.cloudredirect.tokens")};
+        auto query=CFDictionaryCreate(nullptr,keys,values,2,&kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
+        auto status=SecItemDelete(query);CFRelease(query);return status==errSecSuccess||status==errSecItemNotFound?0:1;
+    }
+    if(argc==3&&(std::string(argv[1])=="read-credentials-path"||std::string(argv[1])=="store-credentials-path")) {
+        auto store=CreateTokenStore();
+        if(std::string(argv[1])=="read-credentials-path") {
+            auto value=store->Read(argv[2]);if(value.empty())return 1;
+            std::cout<<value;return 0;
+        }
+        std::string value((std::istreambuf_iterator<char>(std::cin)),{});
+        if(value.size()>1024*1024||Json::Parse(value).type!=Json::Type::Object)return 2;
+        return store->Write(argv[2],value)?0:1;
+    }
     if(argc==2 && std::string(argv[1])=="diagnose") {
         MacProfile::Profile profile; std::string error;
-        bool ok=MacProfile::Resolve(profile,error,true)&&MacProfile::TestProtobuf(profile,error);
+        SteamKvInjector::ResolvedKvAddrs kv;
+        bool ok=MacProfile::Resolve(profile,error,true)&&MacProfile::TestProtobuf(profile,error)&&MacProfile::ResolveKv(profile,kv,error)&&MacProfile::TestKv(kv,error,true)&&LivePlaytime::Resolve(0,0,profile.parse)&&LivePlaytime::TestResponseLayout(error);
         auto result=Json::Object(); result.objVal["ok"].type=Json::Type::Bool;
-        result.objVal["ok"].boolVal=ok; result.objVal["message"]=Json::String(ok?"ARM64 Steam cloud interfaces and protobuf round trip verified":error);
+        result.objVal["ok"].boolVal=ok; result.objVal["message"]=Json::String(ok?"ARM64 Steam cloud interfaces, protobuf, KV and playtime response checks verified":error);
         std::cout<<Json::Stringify(result)<<std::endl;
         _Exit(ok?0:1); // Steam's static destructors expect a real Steam process.
     }

@@ -101,6 +101,29 @@ Page {
                 }
             }
 
+            Frame {
+                visible: typeof macOSPort !== "undefined" && macOSPort
+                Layout.fillWidth: true
+                Layout.leftMargin: 20
+                Layout.rightMargin: 20
+                ColumnLayout {
+                    anchors.fill: parent
+                    RowLayout {
+                        Label { text: "Sync Lua scripts"; font.bold: true; Layout.fillWidth: true }
+                        Switch {
+                            checked: typeof macOSPort !== "undefined" && macOSPort ? backend.syncLuas : false
+                            onToggled: { if (typeof macOSPort !== "undefined" && macOSPort) backend.syncLuas = checked }
+                        }
+                    }
+                    Label {
+                        text: "Merge Lua scripts across devices using the selected provider. Restart Steam after changing this setting."
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                        opacity: 0.7
+                    }
+                }
+            }
+
             Item { Layout.fillHeight: true }
         }
     }

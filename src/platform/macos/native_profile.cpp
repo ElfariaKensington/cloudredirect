@@ -56,7 +56,7 @@ bool Resolve(Profile& out,std::string& error,bool allowLoad) {
     bool audited=false;
     out.ranges.clear();auto* c=(const load_command*)(mh+1);
     for(uint32_t i=0;i<mh->ncmds;++i){if(c->cmd==LC_UUID){const unsigned char expected[]={0x1d,0x28,0x26,0x16,0xb6,0x7e,0x30,0xa6,0xb0,0xaf,0xe4,0xd5,0x88,0x06,0x10,0xe7};audited=!memcmp(((const uuid_command*)c)->uuid,expected,16);}
-        if(c->cmd==LC_SEGMENT_64){auto*s=(const segment_command_64*)c;if((s->initprot&VM_PROT_READ)&&s->filesize)out.ranges.push_back({s->vmaddr+out.slide,s->vmaddr+out.slide+s->filesize,(bool)(s->initprot&VM_PROT_EXECUTE),(bool)(s->initprot&VM_PROT_WRITE)});}c=(const load_command*)((const char*)c+c->cmdsize);}
+        if(c->cmd==LC_SEGMENT_64){auto*s=(const segment_command_64*)c;if((s->initprot&VM_PROT_READ)&&s->vmsize)out.ranges.push_back({s->vmaddr+out.slide,s->vmaddr+out.slide+s->vmsize,(bool)(s->initprot&VM_PROT_EXECUTE),(bool)(s->initprot&VM_PROT_WRITE)});}c=(const load_command*)((const char*)c+c->cmdsize);}
     if(!audited){error="This Steam build has not been validated for ARM64 cloud interception; hooks remain inactive";return false;}
     out.transport=out.FindVtable("30CClientUnifiedServiceTransport");
     out.remoteStorage=out.FindVtable("18CUserRemoteStorage");

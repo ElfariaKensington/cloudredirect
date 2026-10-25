@@ -29,3 +29,7 @@ out/
 
 !tests/macos_core_tests.cpp
 !tests/macos_native_rpc_tests.cpp
+
+!tests/macos_stats_tests.cpp
+!tests/macos_manifest_tests.cpp
+!tests/macos_lua_tests.cpp

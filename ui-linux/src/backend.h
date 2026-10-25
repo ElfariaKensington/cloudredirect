@@ -58,6 +58,20 @@ public:
     bool syncPlaytime() const;
     void setSyncPlaytime(bool enabled);
 
+#ifdef Q_OS_MACOS
+    Q_PROPERTY(bool syncLuas READ syncLuas WRITE setSyncLuas NOTIFY settingsChanged)
+    bool syncLuas() const;
+    void setSyncLuas(bool enabled);
+    Q_INVOKABLE QVariantMap manifestSettings() const;
+    Q_INVOKABLE QVariantList manifestApps() const;
+    Q_INVOKABLE QString saveManifestSettings(bool enabled,bool autoComment,const QVariantList& apps);
+    Q_INVOKABLE void openLuaFolder();
+    Q_INVOKABLE void steamCloudList(uint appId);
+    Q_INVOKABLE void steamCloudDelete(uint appId,const QStringList& names);
+    Q_INVOKABLE QString managedIDs() const;
+    Q_INVOKABLE bool redirectEnabled() const;
+    Q_INVOKABLE QString saveManagedIDs(const QString& ids,bool enabled);
+#endif
     Q_INVOKABLE QVariantList getManagedApps();
     Q_INVOKABLE QVariantList getAppDetails();
     Q_INVOKABLE void deleteAppData(uint appId);
@@ -121,6 +135,9 @@ public:
     Q_INVOKABLE void cancelMigration();
 
 signals:
+#ifdef Q_OS_MACOS
+    void steamCloudFinished(const QVariantMap& result,const QString& error);
+#endif
     void statusChanged();
     void appsChanged();
     void settingsChanged();

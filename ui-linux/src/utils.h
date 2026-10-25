@@ -44,6 +44,10 @@ inline bool inFlatpak()
 
 inline QString xdgConfigHome()
 {
+#ifdef Q_OS_MACOS
+    const char* overridePath=std::getenv("CLOUDREDIRECT_CONFIG_HOME");
+    return overridePath&&overridePath[0]=='/'?QString::fromUtf8(overridePath):realHomePath()+"/Library/Application Support";
+#endif
     if (!inFlatpak()) {
         const char* xdg = std::getenv("XDG_CONFIG_HOME");
         if (xdg && xdg[0] == '/')
@@ -54,6 +58,9 @@ inline QString xdgConfigHome()
 
 inline QString xdgDataHome()
 {
+#ifdef Q_OS_MACOS
+    return xdgConfigHome();
+#endif
     if (!inFlatpak()) {
         const char* xdg = std::getenv("XDG_DATA_HOME");
         if (xdg && xdg[0] == '/')

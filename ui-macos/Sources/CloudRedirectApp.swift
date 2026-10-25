@@ -211,6 +211,13 @@ struct ContentView: View {
 }
 
 @main struct CloudRedirectApp: App {
+    init() {
+        let arguments=CommandLine.arguments
+        if arguments.contains("--install-runtime") || arguments.contains("--remove-runtime") {
+            do {try RuntimeInstaller.install(arguments.contains("--install-runtime"));print("Runtime operation completed");exit(0)}
+            catch {fputs(error.localizedDescription+"\n",stderr);exit(1)}
+        }
+    }
     var body: some Scene {
         WindowGroup { ContentView() }.windowResizability(.contentSize)
         .commands { CommandGroup(replacing: .newItem) {} }

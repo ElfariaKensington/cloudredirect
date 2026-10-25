@@ -54,8 +54,8 @@ Page {
                 spacing: 2
                 Layout.leftMargin: 12
 
-                Label { text: "• CloudRedirect from Steam (LD_AUDIT hook)"; opacity: 0.8; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                Label { text: "• cloud_redirect.so and CLI binary"; opacity: 0.8; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                Label { text: (typeof macOSPort !== "undefined" ? "• CloudRedirect from Steam (DYLD injection)" : "• CloudRedirect from Steam (LD_AUDIT hook)"); opacity: 0.8; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                Label { text: (typeof macOSPort !== "undefined" ? "• cloud_redirect.dylib and CLI credentials" : "• cloud_redirect.so and CLI binary"); opacity: 0.8; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 Label { text: "• All configuration and settings"; opacity: 0.8; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 Label { text: "• OAuth tokens (Google Drive / OneDrive)"; opacity: 0.8; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 Label { text: "• All cached saves and cloud data"; opacity: 0.8; wrapMode: Text.WordWrap; Layout.fillWidth: true }
@@ -124,6 +124,22 @@ Page {
                 opacity: 0.7
             }
 
+            Frame {
+                visible: typeof macOSPort !== "undefined"
+                Layout.fillWidth: true
+                Layout.leftMargin: 20
+                Layout.rightMargin: 20
+                ColumnLayout {
+                    anchors.fill: parent
+                    Label { text: "Managed games"; font.bold: true }
+                    Label { text: "Optional manual IDs; self-unlocking Lua apps are detected automatically."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    TextField { id: nativeGameIDs; Layout.fillWidth: true; placeholderText: "Steam app IDs separated by commas"; text: typeof macOSPort !== "undefined" ? backend.managedIDs() : "" }
+                    Switch { id: nativeEnabled; text: "Enable redirection"; checked: typeof macOSPort !== "undefined" ? backend.redirectEnabled() : false }
+                    Button { text: "Save Managed Games"; onClicked: nativeResult.text = backend.saveManagedIDs(nativeGameIDs.text,nativeEnabled.checked) }
+                    Label { id: nativeResult; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                }
+            }
+
             // SLSsteam status
             Frame {
                 Layout.fillWidth: true
@@ -135,7 +151,7 @@ Page {
                     spacing: 4
 
                     Label {
-                        text: "SLSsteam"
+                        text: (typeof macOSPort !== "undefined" ? "Steam" : "SLSsteam")
                         font.bold: true
                     }
                     Label {

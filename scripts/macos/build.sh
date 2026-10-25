@@ -9,8 +9,11 @@ cmake --build "$ROOT/build-macos" --parallel 6
 ctest --test-dir "$ROOT/build-macos" --output-on-failure
 swift build --package-path "$ROOT/ui-macos" -c release
 APP="$DEST/CloudRedirect.app"
+if [ -d "$APP" ]; then rm -rf "$APP"; fi
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/runtime"
 cp "$ROOT/ui-macos/.build/release/CloudRedirect" "$APP/Contents/MacOS/CloudRedirect"
+cp "$ROOT/build-macos/cloud760_tool" "$APP/Contents/Resources/runtime/"
+codesign --force --sign - "$APP/Contents/Resources/runtime/cloud760_tool"
 cp "$ROOT/build-macos/cloud_redirect.dylib" "$ROOT/build-macos/cloud_redirect_cli" "$APP/Contents/Resources/runtime/"
 ICONSET="$ROOT/build-macos/CloudRedirect.iconset"
 mkdir -p "$ICONSET"
@@ -23,6 +26,8 @@ for size in 16 32 128 256; do
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/CloudRedirect.icns"
 cp "$ROOT/LICENSE" "$APP/Contents/Resources/LICENSE"
+mkdir -p "$APP/Contents/Resources/licenses"
+cp "$ROOT/licenses/Dobby-Apache-2.0.txt" "$APP/Contents/Resources/licenses/"
 cp "$ROOT/UPSTREAM.md" "$APP/Contents/Resources/UPSTREAM.md"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
