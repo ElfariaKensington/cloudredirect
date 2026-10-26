@@ -32,8 +32,13 @@ jobs:
           swift --version
           swift package --package-path ui-macos dump-package >/dev/null
 
-      - name: Build app and ZIP
-        run: ./scripts/macos/build.sh
+      - name: Install Qt for the full macOS interface
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: brew install qt
+
+      - name: Build and validate full app and ZIP
+        run: ./scripts/macos/build-full-ui.sh "$GITHUB_WORKSPACE/out"
 
       - name: Generate release identifiers
         id: release
