@@ -1,13 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-DEST="${1:-$ROOT/out/full-ui}"
-"$ROOT/scripts/macos/build.sh" "$DEST"
+DEST="${1:-$ROOT/out}"
+"$ROOT/scripts/macos/stage-runtime.sh" "$DEST"
 QT_PREFIX="${QT_PREFIX:-$(brew --prefix qt)}"
 cmake -S "$ROOT/ui-macos/qt" -B "$ROOT/build-macos-ui" -DCMAKE_PREFIX_PATH="$QT_PREFIX" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$ROOT/build-macos-ui" --parallel 6
 APP="$(cd "$DEST" && pwd)/CloudRedirect.app"
-cp "$APP/Contents/MacOS/CloudRedirect" "$APP/Contents/Resources/CloudRedirectNative"
 cp "$ROOT/build-macos-ui/bin/CloudRedirect" "$APP/Contents/MacOS/CloudRedirect"
 # Stage the declarative modules directly. Homebrew's merged QML directory
 # also contains unrelated WebEngine/3D/PDF modules, which must not be bundled.
