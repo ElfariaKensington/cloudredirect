@@ -5,6 +5,7 @@
 #include <fstream>
 #include "cloud_storage.h"
 #include "cloud_provider_base.h"
+#include "../src/providers/google_drive_provider.h"
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -45,6 +46,83 @@ public:
     std::vector<FileInfo> List(const std::string&) override { return {}; }
     void ResetCounts() { reads = writes = cnWrites = 0; }
 };
+
+// Exercise Drive's real lookup/upload code against a deterministic transport.
+class DriveTransport : public IHttpTransport {
+public:
+    int queries = 0, writes = 0;
+    std::atomic<int> mediaReads{0};
+    std::string checksum = "aa4a5f8125f234182e2dea92805afdfb747a86be", latestId = "remote";
+    bool missingPatch = false;
+    bool Init() override { return true; }
+    void Shutdown() override {}
+    bool IsReady() const override { return true; }
+    HttpUtil::HttpResp Request(const char* method, const char*, const std::string& path,
+                              const std::string&, const std::vector<std::string>&) override {
+        HttpUtil::HttpResp result; result.status = 200;
+        if (std::string(method) == "GET") {
+            if (path.find("alt=media") != std::string::npos) { ++mediaReads; result.body = "state"; }
+            else { ++queries; result.body = "{\"files\":[{\"id\":\"" + latestId + "\",\"sha1Checksum\":\"" + checksum + "\",\"createdTime\":\"2020-01-01T00:00:00Z\"}]}"; }
+        } else {
+            ++writes;
+            if (missingPatch && std::string(method) == "PATCH") {
+                missingPatch = false; result.status = 404;
+            } else result.body = R"({"id":"remote"})";
+        }
+        return result;
+    }
+    HttpUtil::HttpResp RequestUrl(const char*, const std::string&, const std::string&,
+                                 const std::vector<std::string>&) override { return {}; }
+    HttpUtil::HttpResp AuthenticatedGetWithRedirect(const std::string&, const std::string&,
+                                                   const std::string&) override { return {}; }
+};
+class TestDrive : public GoogleDriveProvider {
+public:
+    DriveTransport* transport;
+    TestDrive() {
+        auto mock = std::make_unique<DriveTransport>(); transport = mock.get();
+        m_transport = std::move(mock); m_tok.access = "synthetic";
+        m_tok.expiresAt = time(nullptr) + 3600; m_initialized = true;
+    }
+};
+static void DriveReadModifyWriteChecks() {
+    TestDrive drive;
+    const std::string path = "1/620/state.cloudredirect";
+    std::vector<uint8_t> data;
+    CHECK(drive.Download(path, data));
+    int before = drive.transport->queries;
+    CHECK(drive.Upload(path, data.data(), data.size()));
+    CHECK(drive.transport->queries == before && drive.transport->writes == 1);
+    CHECK(drive.Upload(path, data.data(), data.size()));
+    CHECK(drive.transport->queries == before + 1); // read proof consumed once
+    CHECK(drive.Download(path, data)); before = drive.transport->queries;
+    std::thread writer([&] { CHECK(drive.Upload(path, data.data(), data.size())); });
+    writer.join();
+    CHECK(drive.transport->queries == before + 1); // unrelated writer must verify
+    CHECK(drive.Download(path, data)); before = drive.transport->queries;
+    std::this_thread::sleep_for(std::chrono::milliseconds(2050));
+    CHECK(drive.Upload(path, data.data(), data.size()));
+    CHECK(drive.transport->queries == before + 1); // old proof must verify
+    CHECK(drive.Download(path, data)); before = drive.transport->queries;
+    drive.transport->missingPatch = true;
+    CHECK(drive.Upload(path, data.data(), data.size()));
+    CHECK(drive.transport->queries > before); // deleted ID re-resolved on 404
+    CHECK(drive.Download("1/620/save.bin", data)); before = drive.transport->queries;
+    CHECK(drive.Upload("1/620/save.bin", data.data(), data.size()));
+    CHECK(drive.transport->queries == before + 1); // ordinary saves unchanged
+    before = drive.transport->mediaReads;
+    CHECK(drive.Download(path, data));
+    CHECK(drive.transport->mediaReads == before + 1); // verified parallel read
+    drive.transport->checksum.clear(); before = drive.transport->mediaReads;
+    CHECK(drive.Download(path, data));
+    CHECK(drive.transport->mediaReads == before + 2); // no checksum: fresh GET
+    drive.transport->checksum.assign(40, '0'); before = drive.transport->mediaReads;
+    CHECK(drive.Download(path, data));
+    CHECK(drive.transport->mediaReads == before + 2); // stale bytes: fresh GET
+    drive.transport->latestId = "replacement"; before = drive.transport->mediaReads;
+    CHECK(drive.Download(path, data));
+    CHECK(drive.transport->mediaReads == before + 2); // duplicate winner changed
+}
 
 static void SessionChecks() {
     MemoryProvider provider;
@@ -150,8 +228,10 @@ static void PreparationChecks() {
     LaunchPreparation::Start(root, root + "/steam", 4242);
     LaunchPreparation::RememberClient(7);
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    unsigned action = 0;
     auto begin = [&] {
-        std::ofstream(logPath, std::ios::app) << "GameAction [AppID 620, ActionID 1] : LaunchApp changed task to UpdatingAppTicket with \"\"\n";
+        std::ofstream(logPath, std::ios::app) << "GameAction [AppID 620, ActionID " << ++action
+            << "] : LaunchApp changed task to ProcessingInstallScript with \"\"\n";
     };
     auto prepared = [&] {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
@@ -169,6 +249,11 @@ static void PreparationChecks() {
     CHECK(AcquireCloudSession(4242, 620, ours, false).status == SessionAcquireStatus::Acquired);
     CHECK(std::chrono::steady_clock::now() - start < std::chrono::milliseconds(50));
     CHECK(provider.reads == 1 && provider.writes == 1); // zero network requests on launch
+    std::ofstream(logPath, std::ios::app) << "GameAction [AppID 620, ActionID " << action
+        << "] : LaunchApp changed task to SynchronizingCloud with \"\"\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    CHECK(!LaunchPreparation::State(4242, 620));
+    CHECK(provider.reads == 1 && provider.writes == 1); // later stages cannot reserve twice
     ReleaseCloudSession(4242, 620, 7);
     provider.ResetCounts();
     begin(); state = prepared(); CHECK(state);
@@ -178,7 +263,7 @@ static void PreparationChecks() {
     CHECK(!provider.state.hasActiveSession() && provider.reads == 2 && provider.writes == 2);
     provider.ResetCounts();
     begin(); state = prepared(); CHECK(state);
-    std::ofstream(logPath, std::ios::app) << "GameAction [AppID 620, ActionID 1] : LaunchApp changed task to Failed with \"canceled\"\n";
+    std::ofstream(logPath, std::ios::app) << "GameAction [AppID 620, ActionID " << action << "] : LaunchApp changed task to Failed with \"canceled\"\n";
     const auto cancelDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
     while (LaunchPreparation::State(4242, 620) && std::chrono::steady_clock::now() < cancelDeadline)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -249,6 +334,6 @@ static void TransportChecks() {
     CHECK(ok);
 }
 int main() {
-    try { SessionChecks(); SharedReadChecks(); PreparationChecks(); TransportChecks(); puts("Session conflicts, save barriers, request counts and connection reuse passed"); }
+    try { DriveReadModifyWriteChecks(); SessionChecks(); SharedReadChecks(); PreparationChecks(); TransportChecks(); puts("Session conflicts, save barriers, request counts and connection reuse passed"); }
     catch (const std::exception& e) { fprintf(stderr, "FAIL: %s\n", e.what()); return 1; }
 }

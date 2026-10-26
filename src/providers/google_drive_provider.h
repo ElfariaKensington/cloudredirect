@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <chrono>
 #include <optional>
+#include <thread>
 
 // Google Drive provider.
 // Inherits shared OAuth2/WinHTTP infrastructure from CloudProviderBase.
@@ -43,6 +44,12 @@ private:
     std::unordered_map<std::string, std::string> m_folders;
     std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_missingFolders; // negative cache with TTL
     std::unordered_map<std::string, std::string> m_files;
+    struct StateRead {
+        std::string id;
+        std::thread::id thread;
+        std::chrono::steady_clock::time_point time;
+    };
+    std::unordered_map<std::string, StateRead> m_stateReads;
     std::recursive_mutex m_folderMtx;
     std::recursive_mutex m_folderCreateMtx;  // serializes find-or-create to prevent duplicate folders
 
@@ -102,7 +109,7 @@ private:
                        bool* outComplete = nullptr, int depth = 0);
     std::optional<std::vector<uint8_t>> DownloadFileById(const std::string& fileId);
     LookupStatus FindFileInFolderStatus(const std::string& name, const std::string& folderId,
-                                        std::string* outId = nullptr);
+                                        std::string* outId = nullptr, std::string* outSha1 = nullptr);
     DuplicateFileIdsResult FindDuplicateFileIdsInFolder(const std::string& name,
                                                         const std::string& folderId);
     std::string FindFileInFolder(const std::string& name, const std::string& folderId);

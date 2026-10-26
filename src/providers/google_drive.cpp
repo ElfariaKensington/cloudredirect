@@ -2,6 +2,8 @@
 #include "http_util.h"
 #include "json.h"
 #include "log.h"
+#include "file_util.h"
+#include <future>
 
 #include <thread>
 #include <chrono>
@@ -651,13 +653,13 @@ GoogleDriveProvider::SearchByName(const std::string& filename, bool* outSupporte
 }
 
 GoogleDriveProvider::LookupStatus GoogleDriveProvider::FindFileInFolderStatus(
-    const std::string& name, const std::string& folderId, std::string* outId) {
+    const std::string& name, const std::string& folderId, std::string* outId, std::string* outSha1) {
     std::string q = "name='" + EscapeQuery(name) + "'"
                     " and '" + EscapeQuery(folderId) + "' in parents"
                     " and mimeType!='application/vnd.google-apps.folder'"
                     " and trashed=false";
     auto r = ApiGet("/drive/v3/files?q=" + UrlEncode(q) +
-                    "&fields=files(id,createdTime,size,modifiedTime)&orderBy=modifiedTime desc&pageSize=10");
+                    "&fields=files(id,createdTime,size,modifiedTime,sha1Checksum)&orderBy=modifiedTime desc&pageSize=10");
     if (r.status == 404) {
         InvalidateFolderById(folderId);
         return LookupStatus::Missing;
@@ -682,6 +684,7 @@ GoogleDriveProvider::LookupStatus GoogleDriveProvider::FindFileInFolderStatus(
         }
     }
     CacheFileChild(folderId, name, keepId);
+    if (outSha1) *outSha1 = files[(size_t)0]["sha1Checksum"].str();
     if (outId) *outId = keepId;
     return LookupStatus::Exists;
 }
@@ -1076,8 +1079,22 @@ bool GoogleDriveProvider::Upload(const std::string& path,
         return false;
 
     auto existingId = GetCachedFileId(leafName, parentId);
+    bool justReadState = false;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_folderMtx);
+        auto it = m_stateReads.find(BuildChildCacheKey(parentId, leafName));
+        if (it != m_stateReads.end()) {
+            justReadState = it->second.id == existingId &&
+                it->second.thread == std::this_thread::get_id() &&
+                std::chrono::steady_clock::now() - it->second.time < std::chrono::seconds(2);
+            m_stateReads.erase(it); // single-use proof, never a general lookup cache
+        }
+    }
     UploadStatus uploadStatus = UploadStatus::Error;
-    if (!existingId.empty()) {
+    // Session RMW just resolved duplicates and downloaded this exact state ID.
+    // Repeating the same name query adds latency without making Drive atomic.
+    // All other writes retain verification; PATCH 404 still re-resolves below.
+    if (!existingId.empty() && !justReadState) {
         std::string verifiedId;
         auto verifyStatus = FindFileInFolderStatus(leafName, parentId, &verifiedId);
         if (verifyStatus == LookupStatus::Error) return false;
@@ -1238,19 +1255,42 @@ bool GoogleDriveProvider::Download(const std::string& path,
     if (status != LookupStatus::Exists)
         return false;
 
-    auto fileId = FindFileInFolder(leafName, parentId);
+    std::string fileId;
+    std::optional<std::vector<uint8_t>> data;
+    const auto cachedId = leafName == "state.cloudredirect" ? GetCachedFileId(leafName, parentId) : std::string();
+    if (!cachedId.empty()) {
+        // Fetch bytes alongside the authoritative newest-ID lookup. Accept the
+        // speculative read only when BOTH the selected ID and checksum match;
+        // a replaced/changed file, missing checksum or failure uses a fresh GET.
+        auto read = std::async(std::launch::async, [this, cachedId] { return DownloadFileById(cachedId); });
+        std::string checksum;
+        auto lookup = FindFileInFolderStatus(leafName, parentId, &fileId, &checksum);
+        auto candidate = read.get();
+        if (lookup != LookupStatus::Exists) return false;
+        if (fileId == cachedId && checksum.size() == 40 && candidate) {
+            auto digest = FileUtil::SHA1(candidate->data(), candidate->size());
+            std::string hex;
+            for (auto byte : digest) { hex += "0123456789abcdef"[byte >> 4]; hex += "0123456789abcdef"[byte & 15]; }
+            if (hex == checksum) data = std::move(candidate);
+        }
+    } else fileId = FindFileInFolder(leafName, parentId);
     if (fileId.empty()) {
         LOG("[GDriveProvider] Download: '%s' not found on Drive", path.c_str());
         return false;
     }
 
-    auto data = DownloadFileById(fileId);
+    if (!data) data = DownloadFileById(fileId);
     if (!data.has_value()) {
         LOG("[GDriveProvider] Download FAILED %s", path.c_str());
         return false;
     }
 
     outData = std::move(data.value());
+    if (leafName == "state.cloudredirect") {
+        std::lock_guard<std::recursive_mutex> lock(m_folderMtx);
+        m_stateReads[BuildChildCacheKey(parentId, leafName)] =
+            {fileId, std::this_thread::get_id(), std::chrono::steady_clock::now()};
+    }
     LOG("[GDriveProvider] Downloaded %s (%zu bytes)", path.c_str(), outData.size());
     return true;
 }

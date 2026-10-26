@@ -19,7 +19,7 @@ namespace LaunchPreparation {
 namespace {
 struct Entry {
     uint32_t app = 0;
-    uint64_t client = 0;
+    uint64_t client = 0, action = 0;
     bool claimed = false, canceled = false;
     std::condition_variable changed;
     std::promise<CloudStorage::SessionAcquireResult> result;
@@ -39,18 +39,28 @@ std::map<uint32_t, std::shared_ptr<Entry>> entries;
 std::thread watcher;
 std::vector<std::pair<std::shared_future<void>, std::thread>> workers;
 
-void Prepare(uint32_t app) {
+void Prepare(uint32_t app, uint64_t action) {
     const auto client = ownClient.load();
     LOG("[LaunchPrep] early launch app=%u (known-client=%d, selected=%d)", app, client != 0, CloudIntercept::IsNamespaceApp(app));
     if (!client || !CloudIntercept::IsNamespaceApp(app)) return;
     std::lock_guard<std::mutex> lock(mutex);
-    if (stopping || entries.count(app)) return;
-    auto entry = std::make_shared<Entry>(); entry->app = app; entry->client = client;
+    if (stopping) return;
+    std::shared_ptr<Entry> previous;
+    if (auto it = entries.find(app); it != entries.end()) {
+        if (it->second->action == action) return;
+        previous = it->second;
+        previous->canceled = true;
+        previous->changed.notify_all();
+    }
+    auto entry = std::make_shared<Entry>(); entry->app = app; entry->client = client; entry->action = action;
     entries[app] = entry;
-    workers.emplace_back(entry->done, std::thread([entry] {
+    workers.emplace_back(entry->done, std::thread([entry, previous] {
+        if (previous) previous->done.wait();
         auto started = std::chrono::steady_clock::now();
         CloudStorage::SessionAcquireResult result;
-        try {
+        bool run;
+        { std::lock_guard<std::mutex> lock(mutex); run = !stopping && !entry->canceled; }
+        if (run) try {
             char host[256] = {};
             gethostname(host, sizeof(host) - 1);
             CloudStorage::SessionLock session{entry->client, host,
@@ -184,6 +194,7 @@ void Start(const std::string& root, const std::string& steam, uint32_t currentAc
         uint64_t offset = std::filesystem::file_size(path, initialError);
         if (initialError) offset = 0;
         std::string pending;
+        std::map<uint32_t, uint64_t> seenActions;
         while (!stopping) {
             std::error_code ec;
             const auto size = std::filesystem::file_size(path, ec);
@@ -204,12 +215,31 @@ void Start(const std::string& root, const std::string& steam, uint32_t currentAc
                 uint32_t app = 0;
                 const auto id = start + strlen("GameAction [AppID ");
                 if (std::from_chars(line.data() + id, line.data() + line.size(), app).ec != std::errc()) continue;
-                if (line.find("LaunchApp changed task to UpdatingAppTicket") != std::string::npos) Prepare(app);
-                else if (line.find("LaunchApp") != std::string::npos &&
+                const auto actionPosition = line.find(", ActionID ", id);
+                if (actionPosition == std::string::npos) continue;
+                uint64_t action = 0;
+                if (std::from_chars(line.data() + actionPosition + strlen(", ActionID "),
+                    line.data() + line.size(), action).ec != std::errc()) continue;
+                const bool early = line.find("LaunchApp changed task to UpdatingAppTicket") != std::string::npos ||
+                    line.find("LaunchApp changed task to UpdatingAppInfo") != std::string::npos ||
+                    line.find("LaunchApp changed task to ShowLaunchOption") != std::string::npos ||
+                    line.find("LaunchApp changed task to ProcessingInstallScript") != std::string::npos ||
+                    line.find("LaunchApp changed task to SynchronizingCloud") != std::string::npos;
+                if (early) {
+                    // Cached tickets skip UpdatingAppTicket entirely. Observe the
+                    // first available stage, exactly once per launch action.
+                    auto seen = seenActions.find(app);
+                    if (seen == seenActions.end() || seen->second != action) {
+                        seenActions[app] = action;
+                        Prepare(app, action);
+                    }
+                } else if (line.find("LaunchApp") != std::string::npos &&
                          (line.find("Failed") != std::string::npos || line.find("Cancelled") != std::string::npos || line.find("Canceled") != std::string::npos)) {
                     if (auto entry = Find(account, app)) {
                         std::lock_guard<std::mutex> lock(mutex);
-                        entry->canceled = true; entry->changed.notify_all();
+                        if (entry->action == action) {
+                            entry->canceled = true; entry->changed.notify_all();
+                        }
                     }
                 }
             }
