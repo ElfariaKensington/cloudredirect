@@ -1,3 +1,4 @@
+#include "launch_preparation.h"
 #include "cloud_hooks.h"
 #include "cloud_intercept.h"
 
@@ -220,6 +221,7 @@ static void EnsureInitialized() {
         // Manifest system fetches CN/manifest on-demand; no bulk startup sync.
         if (CloudStorage::IsCloudActive()) {
             LOG("[StartupSync] Cloud active; metadata will be fetched on-demand per app");
+            LaunchPreparation::Start(storageRoot, CloudIntercept::GetSteamPath(), CloudIntercept::GetAccountId());
         }
     });
 }
@@ -564,7 +566,6 @@ extern "C" bool hook_IsCloudEnabledForApp(void* pThis, unsigned int appId)
     }
     CrashContextScope crashContext("IsCloudEnabledForApp:entry", "IsCloudEnabledForApp", appId);
     if (g_redirectEnabled&&CloudIntercept::IsNamespaceApp(appId)) {
-        LOG("[Hook] IsCloudEnabledForApp(%u) -> true (namespace app)", appId);
         return true;
     }
 
@@ -577,6 +578,7 @@ extern "C" bool hook_IsCloudEnabledForApp(void* pThis, unsigned int appId)
 
 void CloudHooks::BeginShutdown() {
     g_shuttingDown.store(true,std::memory_order_release);
+    LaunchPreparation::Shutdown();
     NativeLua::Shutdown();
     NativeStats::Shutdown();
     for(int i=0;i<300&&g_hookRefCount.load(std::memory_order_acquire)>0;++i)usleep(10000);

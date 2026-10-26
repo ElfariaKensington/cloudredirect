@@ -35,3 +35,4 @@ out/
 !tests/macos_lua_tests.cpp
 !tests/macos_credential_tests.cpp
 !tests/macos_cloud_inventory_tests.py
+!tests/macos_launch_tests.cpp

@@ -1,3 +1,6 @@
+#ifdef __APPLE__
+#include "launch_preparation.h"
+#endif
 #include "rpc_handlers.h"
 #include "metadata_sync.h"
 #include "autocloud_scan.h"
@@ -572,6 +575,11 @@ RpcResult HandleGetChangelist(uint32_t appId, const std::vector<PB::Field>& reqB
     if (CloudStorage::IsCloudActive())
         CloudStorage::WaitForPendingPublish(accountId, appId);
 
+    std::optional<CloudStorage::StateFetchResult> preparedState;
+#ifdef __APPLE__
+    preparedState = LaunchPreparation::State(accountId, appId);
+#endif
+
     // Fast path: if full manifest already sent this session and cloud CN unchanged,
     // return empty delta. Serving 0 files is the only way to prevent per-file
     // reconciliation (IDA-verified: sub_138534B80 CN check is logging-only).
@@ -592,7 +600,8 @@ RpcResult HandleGetChangelist(uint32_t appId, const std::vector<PB::Field>& reqB
             // CN probe; on change, invalidate cache and fall through to full fetch.
             bool probeNeeded = CloudStorage::IsCloudActive() && cachedCN > 0;
             uint64_t remoteCN = probeNeeded
-                ? CloudStorage::FetchCloudCN(accountId, appId) : cachedCN;
+                ? (preparedState ? preparedState->state.cn
+                                 : CloudStorage::FetchCloudCN(accountId, appId)) : cachedCN;
             if (probeNeeded && remoteCN == 0) {
                 // Probe failed; invalidate cache and fall through to full fetch.
                 LOG("[NS-CL] GetAppFileChangelist app=%u: CN probe failed, invalidating cache",
@@ -641,7 +650,7 @@ RpcResult HandleGetChangelist(uint32_t appId, const std::vector<PB::Field>& reqB
         // Bounded: timeout falls through to local-manifest fallback (background fetch
         // warms cache). Stay under the 15s BMainLoop watchdog.
         static constexpr int kChangelistFetchDeadlineMs = 12000;
-        auto stateResult = CloudStorage::FetchCloudStateBounded(
+        auto stateResult = preparedState ? *preparedState : CloudStorage::FetchCloudStateBounded(
             accountId, appId, kChangelistFetchDeadlineMs);
         if (stateResult.status == CloudStorage::StateFetchStatus::Ok) {
             auto& state = stateResult.state;
@@ -1220,12 +1229,6 @@ RpcResult HandleLaunchIntent(uint32_t appId, const std::vector<PB::Field>& reqBo
     EnsureAppQuotaInjected(accountId, appId, nullptr);
     EnsureSaveFilesInjected(appId);
 
-    // Fetch cloud state (SHAs for cache-first restore + session management).
-    CloudStorage::StateFetchResult stateResult;
-    if (CloudStorage::IsCloudActive()) {
-        stateResult = CloudStorage::FetchCloudState(accountId, appId);
-    }
-
     ConsumeConflictLocalChoice(appId);
 
     PendingOpsJournal::Entry currentSession;
@@ -1245,78 +1248,31 @@ RpcResult HandleLaunchIntent(uint32_t appId, const std::vector<PB::Field>& reqBo
     // cache can tell our session apart from a foreign machine's.
     CloudStorage::NoteOwnClientId(currentSession.clientId);
 
-    // Cloud session management -- reuse stateResult from above (already fetched).
     PB::Writer body;
     bool sessionConflict = false;
-    if (stateResult.status == CloudStorage::StateFetchStatus::Ok) {
-        // Sync mutex: serialize state RMW to prevent interleaved publishes.
-        // Cooperative acquire: hard lock would stall BMainLoop past 15s watchdog.
-        auto syncMtx = CloudStorage::AcquireAppSyncMutex(accountId, appId);
-        auto syncLock = CoopYield::LockCooperatively(*syncMtx);
-
-        auto& state = stateResult.state;
-        uint64_t now = static_cast<uint64_t>(time(nullptr));
-
-        if (state.hasActiveSession() &&
-            state.session.clientId != currentSession.clientId) {
-            // Another machine holds session lock; EResult=108 triggers conflict UI.
-            LOG("[NS] LaunchIntent app=%u: another session active (machine=%s, client=%llu, age=%llus)",
-                appId, state.session.machineName.c_str(),
-                state.session.clientId,
-                now - state.session.timeLastUpdated);
+    if (CloudStorage::IsCloudActive()) {
+        const auto started = std::chrono::steady_clock::now();
+        CloudStorage::SessionLock session;
+        session.clientId = currentSession.clientId;
+        session.machineName = currentSession.machineName;
+        session.timeLastUpdated = currentSession.timeLastUpdated;
+        session.operation = "active";
+        auto result = CloudStorage::AcquireCloudSession(
+            accountId, appId, session, ignorePendingOperations);
+        if (result.status == CloudStorage::SessionAcquireStatus::Conflict) {
+            const auto& remote = result.state.session;
             PB::Writer op;
-            op.WriteVarint(1, 1); // operation = AppSessionActive
-            op.WriteString(2, state.session.machineName);
-            op.WriteVarint(3, state.session.clientId);
-            op.WriteVarint(4, static_cast<uint32_t>(state.session.timeLastUpdated));
+            op.WriteVarint(1, 1); // AppSessionActive
+            op.WriteString(2, remote.machineName);
+            op.WriteVarint(3, remote.clientId);
+            op.WriteVarint(4, static_cast<uint32_t>(remote.timeLastUpdated));
             body.WriteSubmessage(1, op);
-
-            if (!ignorePendingOperations) {
-                // Steam expects EResult=108 to trigger the conflict UI.
-                sessionConflict = true;
-            } else {
-                // "Play anyway" -- override stale session.
-                state.session.clientId = currentSession.clientId;
-                state.session.machineName = currentSession.machineName;
-                state.session.timeLastUpdated = now;
-                state.session.operation = "active";
-                // Session-only: skip blob verification (lockOnly=true).
-                if (!CloudStorage::PublishCloudState(accountId, appId, state, /*lockOnly=*/true)) {
-                    LOG("[NS] LaunchIntent app=%u: session override publish failed", appId);
-                }
-                LOG("[NS] LaunchIntent app=%u: forced session override (machine=%s, client=%llu)",
-                    appId, currentSession.machineName.c_str(), currentSession.clientId);
-            }
-        } else {
-            state.session.clientId = currentSession.clientId;
-            state.session.machineName = currentSession.machineName;
-            state.session.timeLastUpdated = now;
-            state.session.operation = "active";
-            // Session-only: skip blob verification (lockOnly=true).
-            if (!CloudStorage::PublishCloudState(accountId, appId, state, /*lockOnly=*/true)) {
-                // Publish refused/failed -- typically the CN-monotonic guard saw a
-                // newer cloud state (another machine published in the window).
-                // Re-fetch the fresh state and re-apply our session onto it.
-                LOG("[NS] LaunchIntent app=%u: session acquire publish failed, re-fetching to reconcile", appId);
-                auto freshResult = CloudStorage::FetchCloudState(accountId, appId);
-                if (freshResult.status == CloudStorage::StateFetchStatus::Ok) {
-                    auto& freshState = freshResult.state;
-                    if (freshState.hasActiveSession() &&
-                        freshState.session.clientId != currentSession.clientId) {
-                        // Another machine acquired the session in the window.
-                        LOG("[NS] LaunchIntent app=%u: another machine acquired session during retry", appId);
-                        sessionConflict = !ignorePendingOperations;
-                    } else {
-                        freshState.session = state.session;
-                        if (!CloudStorage::PublishCloudState(accountId, appId, freshState, /*lockOnly=*/true)) {
-                            LOG("[NS] LaunchIntent app=%u: session acquire retry also failed", appId);
-                        }
-                    }
-                }
-            }
-            LOG("[NS] LaunchIntent app=%u: acquired session (machine=%s, client=%llu)",
-                appId, currentSession.machineName.c_str(), currentSession.clientId);
+            sessionConflict = true;
         }
+        LOG("[NS] LaunchIntent app=%u: session status=%d in %lldms", appId,
+            static_cast<int>(result.status),
+            (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - started).count());
     }
 
     // Don't clear UploadPending here: this runs before GetAppFileChangelist reads the

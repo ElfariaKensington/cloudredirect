@@ -100,6 +100,17 @@ void NoteOwnClientId(uint64_t clientId);
 bool PublishCloudState(uint32_t accountId, uint32_t appId,
                        const CloudAppState& state, bool lockOnly = false);
 
+enum class SessionAcquireStatus { Acquired, Conflict, NotFound, Failed };
+struct SessionAcquireResult {
+    SessionAcquireStatus status = SessionAcquireStatus::Failed;
+    CloudAppState state;
+};
+// Serialize with pending saves, fetch the current manifest, then change only its
+// session. Never reuse a cached manifest or rewrite the unchanged CN sidecar.
+SessionAcquireResult AcquireCloudSession(uint32_t accountId, uint32_t appId,
+                                        const SessionLock& session, bool force,
+                                        bool allowPrepared = true);
+
 std::string SerializeState(const CloudAppState& state);
 bool DeserializeState(const std::string& json, CloudAppState& outState);
 

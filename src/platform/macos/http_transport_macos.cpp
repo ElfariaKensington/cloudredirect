@@ -25,6 +25,31 @@ static std::string g_caCertDir;
 // curl_easy_init/cleanup can race internal OpenSSL global tables.
 static std::mutex g_curlHandleMutex;
 
+// Lease each easy handle to one request at a time. Reset request options when
+// returning it, preserving libcurl's DNS/TLS/connection caches across threads.
+class CurlHandlePool {
+public:
+    ~CurlHandlePool() {
+        std::lock_guard<std::mutex> lock(g_curlHandleMutex);
+        for (auto* handle : idle) curl_easy_cleanup(handle);
+    }
+    CURL* Acquire() {
+        std::lock_guard<std::mutex> lock(g_curlHandleMutex);
+        if (idle.empty()) return curl_easy_init();
+        auto* handle = idle.back();
+        idle.pop_back();
+        return handle;
+    }
+    void Release(CURL* handle) {
+        std::lock_guard<std::mutex> lock(g_curlHandleMutex);
+        curl_easy_reset(handle); // clear auth, body, callbacks and TLS overrides
+        if (idle.size() < 8) idle.push_back(handle);
+        else curl_easy_cleanup(handle);
+    }
+private:
+    std::vector<CURL*> idle;
+};
+
 // Probe well-known CA bundle locations.
 // Environment variables take priority, then standard paths.
 static void ProbeSystemCaBundle() {
@@ -155,7 +180,7 @@ static bool IsCurlTlsFailure(CURLcode res) {
     }
 }
 
-static HttpUtil::HttpResp CurlRequest(const char* logTag, const char* method,
+static HttpUtil::HttpResp CurlRequest(CurlHandlePool& pool, const char* logTag, const char* method,
                                        const std::string& url, const std::string& body,
                                        const std::vector<std::string>& hdrs,
                                        long timeout, bool captureHeaders,
@@ -182,12 +207,13 @@ static HttpUtil::HttpResp CurlRequest(const char* logTag, const char* method,
         else safeUrl += c;
     }
 
-    CURL* curl;
-    {
-        std::lock_guard<std::mutex> lock(g_curlHandleMutex);
-        curl = curl_easy_init();
-    }
+    CURL* curl = pool.Acquire();
     if (!curl) return resp;
+    struct Lease {
+        CurlHandlePool& pool;
+        CURL* handle;
+        ~Lease() { pool.Release(handle); }
+    } lease{pool, curl};
 
     std::string responseBody;
     std::string responseHeaders;
@@ -197,6 +223,7 @@ static HttpUtil::HttpResp CurlRequest(const char* logTag, const char* method,
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "CloudRedirect/1.0");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, followRedirects ? 1L : 0L);
     if (followRedirects)
@@ -244,10 +271,6 @@ static HttpUtil::HttpResp CurlRequest(const char* logTag, const char* method,
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
 
     if (slist) curl_slist_free_all(slist);
-    {
-        std::lock_guard<std::mutex> lock(g_curlHandleMutex);
-        curl_easy_cleanup(curl);
-    }
 
     if (res != CURLE_OK) {
         resp.tlsFailure = IsCurlTlsFailure(res);
@@ -281,14 +304,14 @@ public:
                                const std::string& path, const std::string& body,
                                const std::vector<std::string>& headers) override {
         std::string url = Scheme() + host + path;
-        return CurlRequest(m_logTag, method, url, body, headers, 30L, true, nullptr,
+        return CurlRequest(m_pool, m_logTag, method, url, body, headers, 30L, true, nullptr,
                            false, &m_opts);
     }
 
     HttpUtil::HttpResp RequestUrl(const char* method, const std::string& fullUrl,
                                    const std::string& body,
                                    const std::vector<std::string>& headers) override {
-        return CurlRequest(m_logTag, method, fullUrl, body, headers, 60L, true, nullptr,
+        return CurlRequest(m_pool, m_logTag, method, fullUrl, body, headers, 60L, true, nullptr,
                            false, &m_opts);
     }
 
@@ -298,10 +321,10 @@ public:
         std::string url = Scheme() + host + path;
         std::vector<std::string> hdrs = {authHeader};
         std::string location;
-        auto resp = CurlRequest(m_logTag, "GET", url, {}, hdrs, 30L, true, &location,
+        auto resp = CurlRequest(m_pool, m_logTag, "GET", url, {}, hdrs, 30L, true, &location,
                                 false, &m_opts);
         if (resp.status >= 300 && resp.status < 400 && !location.empty())
-            return CurlRequest(m_logTag, "GET", location, {}, {}, 60L, false, nullptr,
+            return CurlRequest(m_pool, m_logTag, "GET", location, {}, {}, 60L, false, nullptr,
                                /*followRedirects=*/true, &m_opts);
         return resp;
     }
@@ -313,6 +336,7 @@ private:
         return m_opts.allowInsecureHttp ? "http://" : "https://";
     }
     TransportOptions m_opts;
+    CurlHandlePool m_pool;
 };
 
 std::unique_ptr<IHttpTransport> CreateHttpTransport(const char* logTag) {

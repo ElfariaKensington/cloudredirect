@@ -1,3 +1,6 @@
+#ifdef __APPLE__
+#include "launch_preparation.h"
+#endif
 #include "app_state.h"
 #include "cloud_storage.h"
 #include "cloud_metadata_paths.h"
@@ -25,7 +28,7 @@ namespace CloudStorage {
 static ICloudProvider* g_stateProvider = nullptr;
 
 // Serve-path cloud-state cache: backs FetchCloudStateForServe only.
-// FetchCloudState never reads it; it only refreshes it on each live fetch.
+// Live fetches and successful writes refresh it; RMW callers never read it.
 namespace {
 
 // Staleness ceiling. Covers a download burst (serve runs right after the
@@ -120,6 +123,9 @@ void WaitForPendingPublish(uint32_t accountId, uint32_t appId) {
 
 // See g_ownClientId.
 void NoteOwnClientId(uint64_t clientId) {
+#ifdef __APPLE__
+    LaunchPreparation::RememberClient(clientId);
+#endif
     if (clientId != 0)
         g_ownClientId.store(clientId, std::memory_order_relaxed);
 }
@@ -567,6 +573,35 @@ StateFetchResult FetchCloudStateForServe(uint32_t accountId, uint32_t appId) {
     return fetchFut.get();
 }
 
+// Caller must validate the live base and hold the per-app sync mutex for RMW.
+static bool WriteCloudState(uint32_t accountId, uint32_t appId,
+                            const CloudAppState& state, bool updateCN) {
+    std::string json = SerializeState(state);
+    std::string statePath = CloudMetadataPath(accountId, appId, kStateFilename);
+
+    if (!g_stateProvider->Upload(statePath,
+            reinterpret_cast<const uint8_t*>(json.data()), json.size())) {
+        LOG("[AppState] PublishCloudState app %u: upload failed", appId);
+        return false;
+    }
+
+    // Keep cn.cloudredirect in sync for lightweight CN probes.
+    if (updateCN && state.cn > 0) {
+        std::string cnStr = std::to_string(state.cn);
+        std::string cnPath = CloudMetadataPath(accountId, appId,
+            CloudIntercept::kCNFilename);
+        g_stateProvider->Upload(cnPath,
+            reinterpret_cast<const uint8_t*>(cnStr.data()), cnStr.size());
+    }
+
+    InvalidateServeCache(accountId, appId);
+    RefreshServeCache(accountId, appId, {StateFetchStatus::Ok, state});
+
+    LOG("[AppState] PublishCloudState app %u: published CN=%llu, %zu files",
+        appId, state.cn, state.files.size());
+    return true;
+}
+
 bool PublishCloudState(uint32_t accountId, uint32_t appId,
                        const CloudAppState& state, bool lockOnly) {
     InflightSyncScope guard;
@@ -611,34 +646,40 @@ bool PublishCloudState(uint32_t accountId, uint32_t appId,
         }
     }
 
-    std::string json = SerializeState(verified);
-    std::string statePath = CloudMetadataPath(accountId, appId, kStateFilename);
+    return WriteCloudState(accountId, appId, verified, !lockOnly);
+}
 
-    if (!g_stateProvider->Upload(statePath,
-            reinterpret_cast<const uint8_t*>(json.data()), json.size())) {
-        LOG("[AppState] PublishCloudState app %u: upload failed", appId);
-        return false;
+SessionAcquireResult AcquireCloudSession(uint32_t accountId, uint32_t appId,
+                                        const SessionLock& session, bool force, bool allowPrepared) {
+#ifdef __APPLE__
+    if (allowPrepared) {
+        if (auto prepared = LaunchPreparation::Take(accountId, appId, session.clientId, force))
+            return std::move(*prepared);
     }
-
-    // Keep cn.cloudredirect in sync for lightweight CN probes.
-    if (state.cn > 0) {
-        std::string cnStr = std::to_string(state.cn);
-        std::string cnPath = CloudMetadataPath(accountId, appId,
-            CloudIntercept::kCNFilename);
-        g_stateProvider->Upload(cnPath,
-            reinterpret_cast<const uint8_t*>(cnStr.data()), cnStr.size());
-    }
-
-    // A local mutation just landed: the serve cache's snapshot is now stale.
-    // Drop it so the next serve read re-fetches (and re-warms with the new cn).
-    InvalidateServeCache(accountId, appId);
-
-    LOG("[AppState] PublishCloudState app %u: published CN=%llu, %zu files",
-        appId, verified.cn, verified.files.size());
-    return true;
+#endif
+    InflightSyncScope guard;
+    if (!guard) return {};
+    WaitForPendingPublish(accountId, appId);
+    auto mutex = AcquireAppSyncMutex(accountId, appId);
+    auto lock = CoopYield::LockCooperatively(*mutex);
+    auto current = FetchCloudState(accountId, appId);
+    if (current.status == StateFetchStatus::NotFound)
+        return {SessionAcquireStatus::NotFound, {}};
+    if (current.status != StateFetchStatus::Ok) return {};
+    if (current.state.hasActiveSession() &&
+        current.state.session.clientId != session.clientId && !force)
+        return {SessionAcquireStatus::Conflict, std::move(current.state)};
+    // The base was fetched inside the lock immediately above. A second fetch
+    // cannot make this read/write atomic on providers without conditional writes;
+    // it only adds a round trip. Preserve the entire freshly fetched manifest.
+    current.state.session = session;
+    if (!WriteCloudState(accountId, appId, current.state, false)) return {};
+    return {SessionAcquireStatus::Acquired, std::move(current.state)};
 }
 
 void ReleaseCloudSession(uint32_t accountId, uint32_t appId, uint64_t clientId) {
+    InflightSyncScope guard;
+    if (!guard) return;
     // Wait for any deferred CompleteBatch publish to land before releasing the
     // session. This ensures the cloud state is durable (at the batch CN) before
     // another machine can acquire and fetch it.
@@ -657,7 +698,7 @@ void ReleaseCloudSession(uint32_t accountId, uint32_t appId, uint64_t clientId) 
         // upload batch. Don't rebuild the manifest from local blobs here -- that
         // advertises files before their blobs are durably uploaded.
         state.session = {};
-        if (!PublishCloudState(accountId, appId, state, /*lockOnly=*/true)) {
+        if (!WriteCloudState(accountId, appId, state, false)) {
             LOG("[AppState] ReleaseCloudSession app %u: publish failed (best-effort)", appId);
         }
         LOG("[AppState] ReleaseCloudSession app %u: session cleared (client=%llu)",
