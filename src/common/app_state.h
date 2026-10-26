@@ -83,7 +83,8 @@ StateFetchResult FetchCloudState(uint32_t accountId, uint32_t appId);
 // the full manifest. Used by the repeat-call cache to check if cloud changed.
 uint64_t FetchCloudCN(uint32_t accountId, uint32_t appId);
 
-// Time-bounded live fetch (worker + deadline); timeout warms serve cache for next call.
+// Read-only bounded fetch: reuse a fresh serve snapshot or join the same live
+// read already in progress. Timeout still warms the cache for the next call.
 StateFetchResult FetchCloudStateBounded(uint32_t accountId, uint32_t appId,
                                         int deadlineMs);
 

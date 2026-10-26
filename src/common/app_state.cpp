@@ -17,6 +17,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -463,8 +464,8 @@ StateFetchResult FetchCloudState(uint32_t accountId, uint32_t appId) {
 // Leaked, never-destructed (same reason as g_serveCache*): the detached worker
 // re-locks g_boundedMtx on completion, possibly during static destruction.
 static std::mutex& g_boundedMtx = *new std::mutex();
-static std::unordered_set<uint64_t>& g_boundedInflightKeys =
-    *new std::unordered_set<uint64_t>();                     // apps with a live worker
+static std::unordered_map<uint64_t, std::shared_future<StateFetchResult>>& g_boundedInflight =
+    *new std::unordered_map<uint64_t, std::shared_future<StateFetchResult>>();
 static std::atomic<int> g_boundedWorkerCount{0};
 static std::atomic<int64_t> g_providerSlowUntilMs{0};       // circuit-breaker deadline
 static std::atomic<int> g_consecutiveTimeouts{0};           // reset on any successful fetch
@@ -472,37 +473,45 @@ static constexpr int kMaxBoundedWorkers = 4;
 static constexpr int kCircuitCooldownMs = 8000;             // serve-local window once circuit opens
 static constexpr int kCircuitTripThreshold = 2;             // consecutive timeouts before opening
 
+static std::optional<StateFetchResult> FreshServeState(uint32_t accountId, uint32_t appId) {
+    std::lock_guard<std::mutex> lock(g_serveCacheMtx);
+    const auto it = g_serveCache.find(ServeCacheKey(accountId, appId));
+    if (it == g_serveCache.end()) return {};
+    const auto age = NowMs() - it->second.fetchedAtMs;
+    if (age < 0 || age >= kServeCacheMaxAgeMs || it->second.foreignSession) return {};
+    return it->second.result;
+}
+
 StateFetchResult FetchCloudStateBounded(uint32_t accountId, uint32_t appId,
                                         int deadlineMs) {
-    uint64_t key = ((uint64_t)accountId << 32) | appId;
-    bool spawn = true;
-    // Circuit open: provider recently timed out -> don't wait, serve local now.
-    if (NowMs() < g_providerSlowUntilMs.load(std::memory_order_relaxed)) {
-        return { StateFetchStatus::Timeout, {} };
-    }
+    if (auto cached = FreshServeState(accountId, appId)) return *cached;
+    const uint64_t key = ((uint64_t)accountId << 32) | appId;
+    std::shared_ptr<std::promise<StateFetchResult>> promise;
+    std::shared_future<StateFetchResult> future;
     {
-        std::lock_guard<std::mutex> lk(g_boundedMtx);
-        // Coalesce duplicate fetches and cap total workers; either way, don't block.
-        if (g_boundedInflightKeys.count(key) ||
-            g_boundedWorkerCount.load(std::memory_order_relaxed) >= kMaxBoundedWorkers) {
-            spawn = false;
+        std::lock_guard<std::mutex> lock(g_boundedMtx);
+        auto it = g_boundedInflight.find(key);
+        if (it != g_boundedInflight.end()) {
+            future = it->second; // join an existing read instead of fetching twice
         } else {
-            g_boundedInflightKeys.insert(key);
+            if (NowMs() < g_providerSlowUntilMs.load(std::memory_order_relaxed) ||
+                g_boundedWorkerCount.load(std::memory_order_relaxed) >= kMaxBoundedWorkers)
+                return {StateFetchStatus::Timeout, {}};
+            promise = std::make_shared<std::promise<StateFetchResult>>();
+            future = promise->get_future().share();
+            g_boundedInflight.emplace(key, future);
             g_boundedWorkerCount.fetch_add(1, std::memory_order_relaxed);
         }
     }
-    if (!spawn) return { StateFetchStatus::Timeout, {} };
 
     // Detached worker: late completions warm the serve cache without blocking Steam.
-    auto promise = std::make_shared<std::promise<StateFetchResult>>();
-    auto future = promise->get_future();
-    std::thread([accountId, appId, key, promise]() {
+    if (promise) std::thread([accountId, appId, key, promise]() {
             // RAII: release inflight slot even on throw (bad_alloc -> std::terminate).
         struct SlotGuard {
             uint64_t key;
             ~SlotGuard() {
                 std::lock_guard<std::mutex> lk(g_boundedMtx);
-                g_boundedInflightKeys.erase(key);
+                g_boundedInflight.erase(key);
                 g_boundedWorkerCount.fetch_sub(1, std::memory_order_relaxed);
             }
         } slotGuard{key};
@@ -527,6 +536,9 @@ StateFetchResult FetchCloudStateBounded(uint32_t accountId, uint32_t appId,
     });
     if (ready) {
         StateFetchResult r = future.get();
+        if (auto cached = FreshServeState(accountId, appId);
+            cached && r.status == StateFetchStatus::Ok && cached->state.cn > r.state.cn)
+            r = std::move(*cached);
         if (r.status == StateFetchStatus::Ok || r.status == StateFetchStatus::NotFound)
             g_consecutiveTimeouts.store(0, std::memory_order_relaxed);
         return r;

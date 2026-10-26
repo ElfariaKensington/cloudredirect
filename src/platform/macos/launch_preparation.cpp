@@ -1,5 +1,6 @@
 #include "launch_preparation.h"
 #include "cloud_intercept.h"
+#include "autocloud_scan.h"
 #include "file_util.h"
 #include "json.h"
 #include "log.h"
@@ -30,7 +31,10 @@ std::mutex mutex;
 std::atomic<bool> stopping{true};
 std::atomic<uint64_t> ownClient{0};
 uint32_t account = 0;
-std::string clientPath;
+std::string clientPath, steamRoot;
+std::mutex startupMutex;
+std::thread startupWarm;
+bool startupStarted = false;
 std::map<uint32_t, std::shared_ptr<Entry>> entries;
 std::thread watcher;
 std::vector<std::pair<std::shared_future<void>, std::thread>> workers;
@@ -90,6 +94,34 @@ std::shared_ptr<Entry> Find(uint32_t requestedAccount, uint32_t app) {
 }
 }
 
+void WarmStartup(uint32_t requestedAccount, uint32_t firstApp) {
+    if (stopping || requestedAccount != account) return;
+    std::lock_guard<std::mutex> lock(startupMutex);
+    if (stopping || startupStarted) return;
+    startupStarted = true;
+    startupWarm = std::thread([firstApp] {
+        const auto started = std::chrono::steady_clock::now();
+        std::vector<uint32_t> apps{firstApp};
+        for (const auto app : CloudIntercept::GetNamespaceApps())
+            if (app != firstApp && AutoCloudScan::IsAppInstalled(steamRoot, app)) apps.push_back(app);
+        std::atomic<size_t> next{0};
+        auto fetch = [&] {
+            while (!stopping) {
+                const auto index = next.fetch_add(1);
+                if (index >= apps.size()) break;
+                CloudStorage::FetchCloudStateBounded(account, apps[index], 12000);
+            }
+        };
+        std::vector<std::thread> pool;
+        for (size_t i = 1; i < std::min<size_t>(4, apps.size()); ++i) pool.emplace_back(fetch);
+        fetch();
+        for (auto& worker : pool) worker.join();
+        LOG("[StartupSync] Prepared %zu installed game inventories in %lldms", apps.size(),
+            (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - started).count());
+    });
+}
+
 void RememberClient(uint64_t client) {
     if (!client || stopping || ownClient.exchange(client) == client) return;
     auto value = Json::Object();
@@ -136,6 +168,8 @@ std::optional<CloudStorage::SessionAcquireResult> Take(uint32_t requestedAccount
 void Start(const std::string& root, const std::string& steam, uint32_t currentAccount) {
     if (!stopping.exchange(false)) return;
     account = currentAccount;
+    steamRoot = steam;
+    startupStarted = false;
     clientPath = root + "/launch-client.json";
     std::ifstream saved(clientPath);
     std::string json((std::istreambuf_iterator<char>(saved)), {});
@@ -192,6 +226,10 @@ void Start(const std::string& root, const std::string& steam, uint32_t currentAc
 void Shutdown() {
     stopping = true;
     if (watcher.joinable()) watcher.join();
+    {
+        std::lock_guard<std::mutex> lock(startupMutex);
+        if (startupWarm.joinable()) startupWarm.join();
+    }
     {
         std::lock_guard<std::mutex> lock(mutex);
         for (auto& [app, entry] : entries) entry->changed.notify_all();

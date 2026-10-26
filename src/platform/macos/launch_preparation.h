@@ -8,6 +8,7 @@
 namespace LaunchPreparation {
 void Start(const std::string& storageRoot, const std::string& steamRoot, uint32_t accountId);
 void RememberClient(uint64_t clientId);
+void WarmStartup(uint32_t accountId, uint32_t firstApp);
 std::optional<CloudStorage::StateFetchResult> State(uint32_t accountId, uint32_t appId);
 std::optional<CloudStorage::SessionAcquireResult> Take(uint32_t accountId, uint32_t appId,
                                                       uint64_t clientId, bool force);

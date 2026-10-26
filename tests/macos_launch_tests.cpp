@@ -19,7 +19,8 @@ using namespace CloudStorage;
 class MemoryProvider : public ICloudProvider {
 public:
     CloudAppState state;
-    int reads = 0, writes = 0, cnWrites = 0;
+    std::atomic<int> reads{0}, writes{0}, cnWrites{0};
+    int readDelayMs = 0;
     bool failRead = false, failWrite = false, malformed = false;
     const char* Name() const override { return "test"; }
     bool Init(const std::string&) override { return true; }
@@ -33,6 +34,7 @@ public:
     }
     bool Download(const std::string&, std::vector<uint8_t>& data) override {
         ++reads;
+        if (readDelayMs) std::this_thread::sleep_for(std::chrono::milliseconds(readDelayMs));
         if (failRead) return false;
         auto json = malformed ? std::string("broken") : SerializeState(state);
         data.assign(json.begin(), json.end());
@@ -112,6 +114,19 @@ static void SessionChecks() {
     provider.ResetCounts();
     CHECK(!PublishCloudState(4242, 620, old, true));
     CHECK(provider.writes == 0 && provider.state.cn == 44);
+    AppState_Shutdown();
+}
+
+static void SharedReadChecks() {
+    MemoryProvider provider; provider.state.cn = 150; provider.readDelayMs = 80;
+    AppState_Init(&provider);
+    auto first = std::async(std::launch::async, [&] { return FetchCloudStateBounded(8181, 620, 1000); });
+    auto second = std::async(std::launch::async, [&] { return FetchCloudStateBounded(8181, 620, 1000); });
+    CHECK(first.get().status == StateFetchStatus::Ok);
+    CHECK(second.get().status == StateFetchStatus::Ok);
+    CHECK(provider.reads == 1);
+    CHECK(FetchCloudStateBounded(8181, 620, 1000).state.cn == 150);
+    CHECK(provider.reads == 1); // fresh startup read is shared with Steam
     AppState_Shutdown();
 }
 
@@ -234,6 +249,6 @@ static void TransportChecks() {
     CHECK(ok);
 }
 int main() {
-    try { SessionChecks(); PreparationChecks(); TransportChecks(); puts("Session conflicts, save barriers, request counts and connection reuse passed"); }
+    try { SessionChecks(); SharedReadChecks(); PreparationChecks(); TransportChecks(); puts("Session conflicts, save barriers, request counts and connection reuse passed"); }
     catch (const std::exception& e) { fprintf(stderr, "FAIL: %s\n", e.what()); return 1; }
 }

@@ -578,6 +578,7 @@ RpcResult HandleGetChangelist(uint32_t appId, const std::vector<PB::Field>& reqB
     std::optional<CloudStorage::StateFetchResult> preparedState;
 #ifdef __APPLE__
     preparedState = LaunchPreparation::State(accountId, appId);
+    if (!preparedState) LaunchPreparation::WarmStartup(accountId, appId);
 #endif
 
     // Fast path: if full manifest already sent this session and cloud CN unchanged,
