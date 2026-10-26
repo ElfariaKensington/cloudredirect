@@ -38,6 +38,18 @@ struct RuntimeInstaller {
         if environment.isEmpty { dictionary.removeValue(forKey: "LSEnvironment") }
         else { dictionary["LSEnvironment"] = environment }
     }
+    static func stageCredentialHelper(from source: URL, to destination: URL) throws {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: destination.path) {
+            guard fm.isExecutableFile(atPath: destination.path) else {
+                throw AppError.message("The installed credential helper is not executable.")
+            }
+            return // Preserve its Keychain identity across builds and updates.
+        }
+        try Data(contentsOf: source).write(to: destination, options: .atomic)
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destination.path)
+    }
+
     static func install(_ installing: Bool) throws {
         try ensureSteamClosed()
         let fm = FileManager.default
@@ -45,6 +57,7 @@ struct RuntimeInstaller {
         let originalPlist = try Data(contentsOf: plist)
         var dictionary = try PropertyListSerialization.propertyList(from: originalPlist, format: nil) as! [String: Any]
         let credentials = executableDirectory.appendingPathComponent("cloud_redirect_credentials")
+        let hadCredentials = fm.fileExists(atPath: credentials.path)
         let oldCredentials = try? Data(contentsOf: credentials)
         let oldRuntime = try? Data(contentsOf: runtime)
         updateInjection(&dictionary, installing: installing)
@@ -52,9 +65,7 @@ struct RuntimeInstaller {
         // All files live in the user-writable Steam bundle; no privileged helper.
         do {
             if installing {
-                let broker = try Data(contentsOf: resources.appendingPathComponent("cloud_redirect_credentials"))
-                try broker.write(to: credentials, options: .atomic)
-                try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: credentials.path)
+                try stageCredentialHelper(from: resources.appendingPathComponent("cloud_redirect_credentials"), to: credentials)
                 let dylib = try Data(contentsOf: resources.appendingPathComponent("cloud_redirect.dylib"))
                 try dylib.write(to: runtime, options: .atomic)
                 try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: runtime.path)
@@ -67,8 +78,10 @@ struct RuntimeInstaller {
             if !installing && fm.fileExists(atPath: runtime.path) { try fm.removeItem(at: runtime) }
             _ = try? run(URL(fileURLWithPath: "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"), ["-f", steam.path])
         } catch {
-            if let oldCredentials { try? oldCredentials.write(to: credentials, options: .atomic) }
-            else { try? fm.removeItem(at: credentials) }
+            if !installing, let oldCredentials {
+                try? oldCredentials.write(to: credentials, options: .atomic)
+                try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: credentials.path)
+            } else if !hadCredentials { try? fm.removeItem(at: credentials) }
             try? originalPlist.write(to: plist, options: .atomic)
             if let oldRuntime { try? oldRuntime.write(to: runtime, options: .atomic) }
             else { try? fm.removeItem(at: runtime) }

@@ -21,6 +21,29 @@ final class InstallerTests: XCTestCase {
         RuntimeInstaller.updateInjection(&plist, installing: false)
         XCTAssertNil(plist["LSEnvironment"])
     }
+    func testCredentialHelperIdentityIsPreservedOnUpdate() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let bundled = root.appendingPathComponent("bundled")
+        let installed = root.appendingPathComponent("installed")
+        try Data("trusted-build".utf8).write(to: installed)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: installed.path)
+        try Data("new-build".utf8).write(to: bundled)
+        try RuntimeInstaller.stageCredentialHelper(from: bundled, to: installed)
+        XCTAssertEqual(try Data(contentsOf: installed), Data("trusted-build".utf8))
+    }
+    func testFirstInstallStagesExecutableCredentialHelper() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let bundled = root.appendingPathComponent("bundled")
+        let installed = root.appendingPathComponent("installed")
+        try Data("new-build".utf8).write(to: bundled)
+        try RuntimeInstaller.stageCredentialHelper(from: bundled, to: installed)
+        XCTAssertEqual(try Data(contentsOf: installed), Data("new-build".utf8))
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: installed.path))
+    }
     func testOAuthFormEncodingDoesNotSplitSecretParameters() {
         XCTAssertEqual(OAuth.form(["key": "a&b+c=# space"]), "key=a%26b%2Bc%3D%23%20space")
     }

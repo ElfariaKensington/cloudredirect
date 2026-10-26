@@ -79,7 +79,20 @@ std::unique_ptr<ITokenStore> CreateTokenStore() { return std::make_unique<Keycha
 #include <chrono>
 extern char** environ;
 namespace MacCredentials {
-static std::string helper(){Dl_info info{};if(!dladdr((void*)&CreateTokenStore,&info)||!info.dli_fname)return {};return (std::filesystem::path(info.dli_fname).parent_path()/"cloud_redirect_credentials").string();}
+std::string SelectHelper(const std::string& bundled, const std::string& installed) {
+    std::error_code error;
+    // Both the UI and Steam must use the same Keychain-trusted executable.
+    // A separately built ad-hoc helper has a different signing identity.
+    if (std::filesystem::is_regular_file(installed, error) && access(installed.c_str(), X_OK) == 0)
+        return installed;
+    return bundled;
+}
+static std::string helper(){
+    Dl_info info{};
+    if(!dladdr((void*)&CreateTokenStore,&info)||!info.dli_fname)return {};
+    return SelectHelper((std::filesystem::path(info.dli_fname).parent_path()/"cloud_redirect_credentials").string(),
+        "/Applications/Steam.app/Contents/MacOS/cloud_redirect_credentials");
+}
 bool Run(const std::string& executable,const std::string& mode,const std::string& path,const std::string& input,bool interactive,std::string& output){
     output.clear();if(executable.empty()||input.size()>1024*1024)return false;
     int in[2],out[2];if(socketpair(AF_UNIX,SOCK_STREAM,0,in))return false;if(pipe(out)){close(in[0]);close(in[1]);return false;}
