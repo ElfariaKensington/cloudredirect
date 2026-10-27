@@ -4,12 +4,6 @@ dist/
 ui/bin/
 ui/obj/
 ui/publish/
-ui-linux/build/
-flatpak/.flatpak-builder/
-flatpak/build-dir/
-flatpak/repo/
-flatpak/cloud_redirect.so
-flatpak/cloud_redirect_cli
 build.ps1
 ui/Resources/cloud_redirect_cli.exe
 tests/*
@@ -18,7 +12,6 @@ ui/CloudRedirect.Tests/
 src/testutil/
 docs/
 tools/
-flatpak/release.sh
 ui/native/
 release-*/
 

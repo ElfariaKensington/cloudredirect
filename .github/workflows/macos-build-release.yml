@@ -20,6 +20,8 @@ jobs:
   build:
     name: Build CloudRedirect for macOS
     runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
     steps:
       - name: Check out macOS branch
         uses: actions/checkout@v4
@@ -29,13 +31,10 @@ jobs:
 
       - name: Verify Swift toolchain
         run: |
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
           swift --version
           swift package --package-path ui-macos dump-package >/dev/null
-
-      - name: Install Qt for the full macOS interface
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-        run: brew install qt
 
       - name: Build and validate full app and ZIP
         run: ./scripts/macos/build-full-ui.sh "$GITHUB_WORKSPACE/out"

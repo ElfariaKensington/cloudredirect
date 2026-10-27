@@ -17,6 +17,12 @@ class KeychainTokens final : public ITokenStore {
         return q;
     }
 public:
+    bool Delete(const std::string& path) {
+        auto q = Query(path);
+        auto status = SecItemDelete(q);
+        CFRelease(q);
+        return status == errSecSuccess || status == errSecItemNotFound;
+    }
     std::string Read(const std::string& path) override {
         auto q = Query(path);
         CFDictionarySetValue(q, kSecReturnData, kCFBooleanTrue);
@@ -62,6 +68,7 @@ public:
     bool IsEncryptionAvailable() const override { return true; }
 };
 std::unique_ptr<ITokenStore> CreateTokenStore() { return std::make_unique<KeychainTokens>(); }
+bool DeleteCredential(const std::string& path) { return KeychainTokens().Delete(path); }
 
 #else
 #include "cloud_provider_base.h"

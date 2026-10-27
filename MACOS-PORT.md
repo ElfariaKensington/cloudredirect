@@ -1,69 +1,18 @@
-# macOS port branch
+# CloudRedirect for macOS
 
-This branch is based on `crghofficial/cloudredirect` master at
-`00969da863c8d7b2e2821ebc2c6cb231bbe56ef2`. The upstream default branch is retained.
-The separate native macOS application and runtime live in this branch.
+The desktop app is built with SwiftUI and AppKit. Foundation handles configuration, Steam account discovery, game inventory, backups, manifest preferences, OAuth, and migration progress. Provider and Steam Cloud operations use the shared native C++ CLI tools.
 
-## Build
-
-Requires Apple Silicon, macOS 15+, Xcode command line tools, CMake, and Qt 6
-(Core, Quick, QuickControls2 and Network). Homebrew `qt` is supported.
+Build with Apple Silicon, macOS 15+, Xcode command line tools and CMake:
 
 ```sh
 git submodule update --init --recursive
-./scripts/macos/build-full-ui.sh
+./scripts/macos/build-full-ui.sh out
 ```
 
-The Qt application and ZIP are emitted into `out/full-ui/`. Pass a destination
-folder to the script to change it. The original SwiftUI frontend remains
-available with `./scripts/macos/build.sh`; the Qt bundle uses its installer as
-a helper. Both builds are ad-hoc signed.
+The app and ZIP are written to the destination directory. Choose a fresh destination for each build. No third-party GUI framework or Homebrew GUI dependency is required.
 
-## Implemented in this branch
+The app preserves the existing configuration, encrypted Keychain credentials, local saves, cached game names and recovery backups. The native runtime continues to implement Steam cloud redirection, stats/playtime syncing, manifest pins and Lua syncing. Setup compares installed executable content after normalizing code signatures, including the credential helper. A runtime update is only offered when the executable contents differ or a required helper is missing.
 
-- A macOS-specific desktop interface with grouped sidebar navigation, an AppKit
-  toolbar, native sidebar material, SF Symbols, system controls and appearance,
-  grouped preferences, provider configuration, OAuth, app management,
-  backup/restore and migration screens. The shared Qt backend retains native
-  macOS paths.
-- Keychain credentials through a separate helper with noninteractive background
-  reads and updates, native runtime installation preserving existing Steam
-  injectors, optional manual app selection and automatic discovery from macSteam and
-  self-unlocking Lua scripts.
-- ARM64 Steam cloud RPC redirection and native cloud configuration KV helpers.
-- Native achievement/playtime hooks and shared stats/cloud merge code. Normal
-  startup seeds from one consolidated account blob, without per-game legacy
-  migration scans. Library stats requests pass through while seeding completes.
-- Native manifest pinning with exact 64-bit IDs and per-app selection.
-- Cloud file browser for the configured provider, showing logical save names
-  from the remote state/manifest. Its picker contains named cloud games only.
-  Provider file deletion publishes deletion tombstones after confirmation,
-  saves a local recovery inventory, and retains content-addressed data for
-  recovery. Active cloud game sessions block deletion. Separate Steam Community
-  storage retains its direct deletion confirmation.
-- Cross-device Lua archive merge and its configuration switch.
+The former cross-platform desktop GUI and its packaging have been removed. Native runtime sources for other platforms remain in `src/platform`.
 
-Internal Steam hooks require audited ARM64 Mach-O UUID
-`1D282616-B67E-30A6-B0AF-E4D5880610E7`. Other builds fail compatibility checks.
-Steam must restart after runtime or runtime-setting changes.
-
-## Validation and remaining parity work
-
-Automated tests cover cloud storage isolation, journals, stats session handling,
-manifest parsing/vector updates, Lua archive merging, Qt app management and
-backup/restore. Native integration diagnostics exercise actual Steam protobuf,
-KV helpers and playtime response layouts in isolated helper processes. A
-read-only connection to native Steam Cloud storage has also been exercised.
-The initial cloud-save runtime uploaded Subnautica Below Zero saves to Google
-Drive successfully. New achievement/playtime hooks and manifest application
-still require end-to-end live-game verification. Restore from a real remote
-provider has not yet been verified.
-
-This is a port in progress, not complete Windows feature parity. The Windows
-stats browser, advanced cleanup with undo, cloud orphan pruning, localization,
-and native app auto-updates are not yet ported. The Qt interface currently
-retains the Linux stats switches and local orphan scan. Flatpak updater methods
-are inactive on macOS. The initial README describes the smaller SwiftUI build;
-this document records the newer Qt branch's current scope.
-
-See THIRD_PARTY.md for Qt and Dobby licensing and rebuild information.
+See `THIRD_PARTY.md` for native third-party components and license notices.

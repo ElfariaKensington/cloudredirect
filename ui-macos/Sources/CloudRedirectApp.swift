@@ -1,7 +1,8 @@
 import Foundation
+import CloudRedirectSupport
 import Darwin
 
-// Command-line installer used by the Qt interface. This helper has no UI.
+// Command-line installer for native runtime management. This helper has no UI.
 @main struct CloudRedirectInstaller {
     static func main() {
         let arguments = Array(CommandLine.arguments.dropFirst())

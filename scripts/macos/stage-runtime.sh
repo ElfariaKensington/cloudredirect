@@ -9,7 +9,7 @@ cmake --build "$ROOT/build-macos" --parallel 6
 ctest --test-dir "$ROOT/build-macos" --output-on-failure
 swift build --package-path "$ROOT/ui-macos" -c release
 APP="$DEST/CloudRedirect.app"
-if [ -d "$APP" ]; then rm -rf "$APP"; fi
+if [ -e "$APP" ]; then echo "Output already exists: $APP" >&2; exit 1; fi
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/runtime"
 cp "$ROOT/ui-macos/.build/release/CloudRedirect" "$APP/Contents/Resources/CloudRedirectNative"
 cp "$ROOT/build-macos/cloud_redirect_credentials" "$APP/Contents/Resources/runtime/"

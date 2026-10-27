@@ -1,28 +1,21 @@
 #!/usr/bin/env python3
-"""Load every packaged QML page with isolated configuration and Steam data."""
-import json
-import os
+"""Check signing, executable dependencies and absence of the retired GUI stack."""
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 
 app = Path(sys.argv[1]).resolve()
-subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
-# codesign --deep does not inspect loadable plugins in Resources.
-for plugin in (app / "Contents/Resources/qml").rglob("*.dylib"):
-    subprocess.run(["codesign", "--verify", "--strict", str(plugin)], check=True)
-with tempfile.TemporaryDirectory(prefix="cloudredirect-bundle-check-") as directory:
-    root = Path(directory)
-    (root / "CloudRedirect").mkdir()
-    (root / "steam/config").mkdir(parents=True)
-    (root / "CloudRedirect/config.json").write_text(
-        json.dumps({"provider": "local", "enabled": False})
-    )
-    env = os.environ.copy()
-    for key in ("QT_PLUGIN_PATH", "QT_QPA_PLATFORM", "QML_IMPORT_PATH", "QML2_IMPORT_PATH", "DYLD_LIBRARY_PATH"):
-        env.pop(key, None)
-    env.update(CLOUDREDIRECT_CONFIG_HOME=directory,
-               CLOUDREDIRECT_STEAM_HOME=str(root / "steam"))
-    subprocess.run([str(app / "Contents/MacOS/CloudRedirect"), "--validate-pages"],
-                   env=env, check=True, timeout=30)
+subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
+for path in app.rglob('*'):
+    if not path.is_file():
+        continue
+    if 'qt' in path.name.lower() or path.suffix == '.qml' or path.name == 'CloudRedirectBackend':
+        raise SystemExit(f'Unexpected legacy interface file: {path.relative_to(app)}')
+    kind = subprocess.run(['file', '-b', str(path)], text=True, capture_output=True, check=True).stdout
+    if 'Mach-O' not in kind:
+        continue
+    subprocess.run(['codesign', '--verify', '--strict', str(path)], check=True)
+    links = subprocess.run(['otool', '-L', str(path)], text=True, capture_output=True, check=True).stdout
+    if any(value in links for value in ('QtCore', 'QtGui', 'QtQuick', 'QtNetwork', '/opt/homebrew/', '/usr/local/')):
+        raise SystemExit(f'Non-system dynamic dependency: {path.relative_to(app)}\n{links}')
+print('Native bundle signatures and dependencies verified.')
